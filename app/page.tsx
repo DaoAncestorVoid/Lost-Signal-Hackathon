@@ -61,7 +61,11 @@ export default function Home() {
       {auth.error && <p className="err" role="alert">{auth.error}</p>}
       {logoutError && <p className="err" role="alert">{logoutError}</p>}
       {auth.loading ? <p role="status">Checking your session…</p> : auth.user && auth.client ? <>
-        <div className="account row"><span className="sub">{auth.user.email}</span><button className="small" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : "Sign out"}</button></div>
+        <div className="account row">
+          <span className="sub">{auth.user.is_anonymous ? "Guest session · Browse and try AI" : auth.user.email}</span>
+          <button className="small" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : auth.user.is_anonymous ? "Sign in / Sign up" : "Sign out"}</button>
+        </div>
+        {auth.user.is_anonymous && <p className="notice" role="status">You're exploring as a guest. Browse reports and try limited AI matching. To post items or claim one, choose Sign in / Sign up. Leaving this guest session may remove access to its history.</p>}
         <Workspace key={auth.user.id} user={auth.user} client={auth.client} />
       </> : <AuthForm client={auth.client} />}
     </main>
@@ -70,6 +74,7 @@ export default function Home() {
 
 function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   const [view, setView] = useState<View>("browse");
+  const guest = user.is_anonymous === true;
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -150,7 +155,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   const categories = ["All", ...new Set([...postCategories, ...reports.map(r => r.category)])];
   const selected = reports.find(r => r.id === selectedId);
   const myItems = reports.filter(r => r.user_id === user.id);
-  const matchableItems = myItems.filter(r => r.status === "open");
+  const matchableItems = guest ? reports.filter(r => r.status === "open").slice(0, 20) : myItems.filter(r => r.status === "open");
   const myClaim = selected && claims.find(c => c.report_id === selected.id && c.claimant_id === user.id);
   const tab = view === "detail" ? "browse" : view;
 
@@ -160,7 +165,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   }
   async function claim(event: React.FormEvent) {
     event.preventDefault();
-    if (!selected || pending.current || claimsLoading || claimsError) return;
+    if (!selected || guest || pending.current || claimsLoading || claimsError) return;
     const parsed = validateNewClaim({ report_id: selected.id, proof });
     if (!parsed.data) { setActionError(parsed.error); return; }
     pending.current = true; setBusy(true); setActionError(""); setNotice("");
@@ -175,7 +180,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     } finally { pending.current = false; if (active.current) setBusy(false); }
   }
   async function decide(claim: Claim, status: "approved" | "rejected") {
-    if (pending.current) return;
+    if (guest || pending.current) return;
     pending.current = true; setBusy(true); setActionError(""); setNotice("");
     try {
       await sessionRequired();
@@ -228,7 +233,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   }
   async function postItem(event: React.FormEvent) {
     event.preventDefault();
-    if (posting.current || photoValidating) return;
+    if (guest || posting.current || photoValidating) return;
     const validation = validateNewReport({
       report_type: reportType, title: form.name, description: form.description,
       category: form.category, location: form.place,
@@ -279,7 +284,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
         {claimsLoading && <p role="status">Loading claims…</p>}
         {claimsError && <p className="err" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></p>}
         {myClaim ? <p role="status">Your claim: <b>{myClaim.status}</b></p> :
-          selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && <form onSubmit={claim}>
+          selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <p className="notice">Want to claim this item? Choose Sign in / Sign up above to use a permanent account.</p> : <form onSubmit={claim}>
             <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe details only the owner would know. Only you and the finder can see this." /></label>
             <button className="big" disabled={busy || claimsLoading || !!claimsError}>{busy ? "Submitting…" : "This is mine — request claim"}</button>
           </form>}
@@ -288,7 +293,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
           {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No claims yet.</p>}
           {claims.filter(c => c.report_id === selected.id).map(c => <div className="info" key={c.id}>
             <p>{c.proof}</p><span className="tag">{c.status}</span>
-            {c.status === "pending" && selected.status === "open" && <div className="row">
+            {!guest && c.status === "pending" && selected.status === "open" && <div className="row">
               <button className="small" disabled={busy} onClick={() => void decide(c, "approved")}>Approve claim</button>
               <button className="small" disabled={busy} onClick={() => void decide(c, "rejected")}>Reject claim</button>
             </div>}
@@ -302,15 +307,15 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
 
     {view === "ai" && <section>
       <h2 style={{ fontSize: 20 }}>Find my item</h2>
-      <p className="note">Choose one of your saved lost or found reports to match it against opposite-type reports in Supabase. Gemini enriches matches when more evidence is needed. Scores indicate similarity, not ownership.</p>
+      <p className="note">{guest ? "Try matching an existing campus report as a guest. Guest Gemini requests are limited; sign up to post your own item." : "Choose one of your saved lost or found reports to match it against opposite-type reports in Supabase."} Gemini enriches matches when more evidence is needed. Scores indicate similarity, not ownership.</p>
       <form onSubmit={runAi}><fieldset disabled={busy}>
-        <label className="field">Your report
+        <label className="field">{guest ? "Demo report" : "Your report"}
           <select value={sourceId} onChange={e => { setSourceId(e.target.value); setAiResults(null); setAnalysis(null); setAiError(""); }}>
             <option value="">Quick text search (without Gemini)</option>
             {matchableItems.map(report => <option key={report.id} value={report.id}>{report.report_type === "lost" ? "Lost" : "Found"}: {report.title}</option>)}
           </select>
         </label>
-        {!matchableItems.length && <p className="note">Post a lost or found item using + to enable Gemini-enhanced matching.</p>}
+        {!matchableItems.length && <p className="note">{guest ? "No open reports available for demo matching yet." : "Post a lost or found item using + to enable Gemini-enhanced matching."}</p>}
         {!sourceId && <>
           <textarea className="box" required maxLength={2000} value={aiText} onChange={e => { setAiText(e.target.value); setAiResults(null); }} placeholder="Black backpack with a red keychain, lost near the library" aria-label="Describe your lost item" />
           <label className="field">Item category<select required value={searchAttributes.category} onChange={e => { setSearchAttributes({ ...searchAttributes, category: e.target.value }); setAiResults(null); }}><option value="">Choose a category</option>{categories.filter(c => c !== "All").map(c => <option key={c}>{c}</option>)}</select></label>
@@ -329,7 +334,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
       </>}
     </section>}
 
-    {view === "post" && <form onSubmit={postItem} aria-busy={postBusy}>
+    {view === "post" && (guest ? <section><h2>Post a lost or found item</h2><p className="notice">Guest accounts are for browsing and trying AI. Sign in or create an account to publish a report and upload a photo.</p><button className="btn2" onClick={() => setView("browse")}>Back to browsing</button></section> : <form onSubmit={postItem} aria-busy={postBusy}>
       <h2 style={{ fontSize: 20 }}>Post a {reportType} item</h2>
       <fieldset disabled={postBusy || !!savedReport}><legend>What happened?</legend><div className="row"><label><input type="radio" name="reportType" checked={reportType === "lost"} onChange={() => setReportType("lost")} /> Lost an item</label><label><input type="radio" name="reportType" checked={reportType === "found"} onChange={() => setReportType("found")} /> Found an item</label></div></fieldset>
       <p className="note">Photo: JPEG, PNG or WebP, up to 5 MiB. Keep identifying private details out of the public description.</p>
@@ -351,11 +356,11 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
       {savedReport && <button type="button" className="btn2" disabled={postBusy} onClick={() => {
         resetForm(); setNotice("The report is saved without a confirmed photo upload."); setView("mine");
       }}>Keep saved report and finish without photo</button>}
-    </form>}
+    </form>)}
 
     {view === "mine" && <section>
       <div className="row"><h2 style={{ fontSize: 20 }}>My items and claims</h2><button className="small" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh</button></div>
-      {!loading && !loadError && !myItems.length && <p className="empty">You have not posted anything yet. Tap + to post a lost or found item.</p>}
+      {!loading && !loadError && !myItems.length && <p className="empty">{guest ? "Guest sessions cannot post or claim items. Sign in to a permanent account to get started." : "You have not posted anything yet. Tap + to post a lost or found item."}</p>}
       {myItems.map(item => <div key={item.id}><button className="match" onClick={() => openItem(item)}><ReportPhoto report={item} className="th" /><div><b>{item.title}</b><div className="sub">{item.location}</div><span className="tag">{item.report_type} · {item.status}</span></div></button>{item.status === "open" && <button className="small" onClick={() => startMatching(item)}>Find AI matches</button>}</div>)}
       <h2>Your claims</h2>
       {claimsLoading && <p role="status">Loading claims…</p>}
@@ -372,7 +377,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     <nav aria-label="Main navigation"><div>
       <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>Browse</button>
       <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => setView("ai")}>AI search</button>
-      <button className="plus" aria-label="Post lost or found item" onClick={() => setView("post")}>+</button>
+      <button className="plus" aria-label={guest ? "Posting requires an account" : "Post lost or found item"} onClick={() => setView("post")}>+</button>
       <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>My items</button>
       <button className={tab === "chat" ? "on" : ""} aria-current={tab === "chat" ? "page" : undefined} onClick={() => setView("chat")}>Messages</button>
     </div></nav>
