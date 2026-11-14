@@ -287,7 +287,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
           selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <p className="notice">Want to claim this item? Choose Sign in / Sign up above to use a permanent account.</p> : <form onSubmit={claim}>
             <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe details only the owner would know. Only you and the finder can see this." /></label>
             <button className="big" disabled={busy || claimsLoading || !!claimsError}>{busy ? "Submitting…" : "This is mine — request claim"}</button>
-          </form>}
+          </form>)}
         {selected.user_id === user.id && <>
           <h2>Claims on this report</h2>
           {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No claims yet.</p>}
