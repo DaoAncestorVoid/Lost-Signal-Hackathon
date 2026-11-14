@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { NewReport } from "./reports/validation";
+import type { Item } from "../types/item";
 
 const Attributes = z.object({
   category: z.string().optional(), color: z.string().optional(),
@@ -24,12 +25,14 @@ const ClaimSchema = z.object({
 });
 export type Claim = z.infer<typeof ClaimSchema>;
 export type RankedReport = { report: Report; score: number; reasons: string[] };
-const MatchAnalysisSchema = z.object({
+export const ReportMatchAnalysisSchema = z.object({
   state: z.enum(["not_needed", "unavailable", "completed", "partial"]),
-  attempted: z.number().int().nonnegative(), succeeded: z.number().int().nonnegative(),
+  attempted: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
   issues: z.array(z.enum(["missing_image", "quota", "timeout", "provider_unavailable"])),
 });
-export type ReportMatches = { matches: RankedReport[]; analysis: z.infer<typeof MatchAnalysisSchema> };
+export type ReportMatchAnalysis = z.infer<typeof ReportMatchAnalysisSchema>;
+export type ReportMatchesResult = { matches: RankedReport[]; analysis: ReportMatchAnalysis };
 
 export class ApiError extends Error {
   status: number;
@@ -90,23 +93,64 @@ export class LostSignalApi {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
     })).claim;
   }
-  async reportMatches(id: string, reports: readonly Report[], signal?: AbortSignal): Promise<ReportMatches> {
-    const response = await this.request(`/api/reports/${encodeURIComponent(id)}/matches`, z.object({
+  /** Match a saved report against opposite-type reports in Supabase using optional Gemini enrichment. */
+  async reportMatches(reportId: string, reports: readonly Report[], signal?: AbortSignal): Promise<ReportMatchesResult> {
+    const source = reports.find(report => report.id === reportId);
+    if (!source) throw new ApiError("Refresh reports before requesting matches.", 409);
+    const response = await this.request(`/api/reports/${encodeURIComponent(reportId)}/matches`, z.object({
       source_report_id: z.string().uuid(), count: z.number().int().nonnegative(),
       matches: z.array(z.object({
         report_id: z.string().uuid(), score: z.number().min(0).max(100), reasons: z.array(z.string()),
       })),
-      analysis: MatchAnalysisSchema,
+      analysis: ReportMatchAnalysisSchema,
     }), { signal }, 120_000);
-    if (response.source_report_id !== id || response.count !== response.matches.length)
+    if (response.source_report_id !== reportId || response.count !== response.matches.length)
       throw new ApiError("Matching returned inconsistent report data.", 502);
     const matches = response.matches.map(match => {
-      const report = reports.find(r => r.id === match.report_id && r.report_type === "found" && r.status === "open");
+      const report = reports.find(r => r.id === match.report_id && r.report_type !== source.report_type && r.status === "open");
       if (!report) throw new ApiError("A matching report is missing from the report list. Refresh reports and try again.", 502);
       return { report, score: match.score, reasons: match.reasons };
     });
     return { matches, analysis: response.analysis };
   }
+  async matches(description: string, reports: readonly Report[], attributes: { category?: string; color?: string; brand?: string } = {}): Promise<RankedReport[]> {
+    // Free-text quick search remains available; saved reports use reportMatches above.
+    const candidates = reports.filter(r => r.report_type === "found" && r.status === "open");
+    const source: Item = { id: "search", reportType: "lost", status: "open", description,
+      category: known(attributes.category), color: known(attributes.color), brand: known(attributes.brand) };
+    const results: RankedReport[] = [];
+    for (let start = 0; start < candidates.length; start += 25) {
+      const batch = candidates.slice(start, start + 25);
+      const response = await this.request("/api/matches", z.object({
+        success: z.literal(true), matches: z.array(z.object({
+          item: z.object({ id: z.string() }), score: z.number().min(0).max(100), reasons: z.array(z.string()),
+        })),
+      }), { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, candidates: batch.map(toMatchingItem) }) });
+      for (const match of response.matches) {
+        const report = batch.find(r => r.id === match.item.id);
+        if (!report) throw new ApiError("Matching returned an unknown report.", 502);
+        results.push({ report, score: match.score, reasons: match.reasons });
+      }
+    }
+    return results.sort((a, b) => b.score - a.score || a.report.id.localeCompare(b.report.id)).slice(0, 10);
+  }
+}
+
+function known(value: string | null | undefined): string | undefined {
+  return value && value.trim().toLowerCase() !== "unknown" ? value : undefined;
+}
+export function toMatchingItem(report: Report): Item {
+  const attributes = report.ai_attributes;
+  return {
+    id: report.id, reportType: report.report_type,
+    status: report.status === "open" ? "open" : "resolved",
+    description: report.description.slice(0, 2000),
+    category: known(report.category)?.slice(0, 100),
+    location: report.location.slice(0, 200),
+    color: known(attributes?.color)?.slice(0, 100), brand: known(attributes?.brand)?.slice(0, 100),
+    features: attributes?.features?.slice(0, 20).map(f => f.slice(0, 200)),
+  };
 }
 
 /** Creation is confirmed independently of upload; callers retain this ID on failure. */

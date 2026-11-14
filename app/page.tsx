@@ -6,7 +6,7 @@ import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
 import { ReportGrid } from "./components/report-card";
-import { LostSignalApi, browseReports, saveReport, type Report, type Claim, type ReportMatches } from "@/lib/frontend-api";
+import { LostSignalApi, browseReports, saveReport, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewReport } from "@/lib/reports/validation";
 import { validateNewClaim } from "@/lib/claims/validation";
 import { validateImage } from "@/lib/reports/images";
@@ -87,9 +87,12 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   const active = useRef(true);
   const reportRequest = useRef(0);
   const claimRequest = useRef(0);
-  const [matchReportId, setMatchReportId] = useState("");
-  const [aiResults, setAiResults] = useState<ReportMatches | null>(null);
+  const [aiText, setAiText] = useState("");
+  const [searchAttributes, setSearchAttributes] = useState({ category: "", color: "", brand: "" });
+  const [aiResults, setAiResults] = useState<RankedReport[] | null>(null);
   const [aiError, setAiError] = useState("");
+  const [sourceId, setSourceId] = useState("");
+  const [analysis, setAnalysis] = useState<ReportMatchAnalysis | null>(null);
   const [reportType, setReportType] = useState<"lost" | "found">("found");
   const [form, setForm] = useState(initialForm);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
@@ -147,16 +150,13 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   const categories = ["All", ...new Set([...postCategories, ...reports.map(r => r.category)])];
   const selected = reports.find(r => r.id === selectedId);
   const myItems = reports.filter(r => r.user_id === user.id);
-  const matchableReports = myItems.filter(r => r.report_type === "lost" && r.status === "open");
+  const matchableItems = myItems.filter(r => r.status === "open");
   const myClaim = selected && claims.find(c => c.report_id === selected.id && c.claimant_id === user.id);
   const tab = view === "detail" ? "browse" : view;
 
   function openItem(report: Report) {
     setSelectedId(report.id); setProof(""); setActionError(""); setNotice(""); setView("detail");
     void loadClaims();
-  }
-  function showMatches(report: Report) {
-    setMatchReportId(report.id); setAiResults(null); setAiError(""); setView("ai");
   }
   async function claim(event: React.FormEvent) {
     event.preventDefault();
@@ -187,14 +187,22 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     } catch (err) { if (active.current) setActionError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
+  function startMatching(report: Report) {
+    setSourceId(report.id); setAiError(""); setAiResults(null); setAnalysis(null); setView("ai");
+  }
   async function runAi(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current || !matchReportId || !matchableReports.some(r => r.id === matchReportId) || loading || loadError) return;
-    pending.current = true; setBusy(true); setAiError(""); setAiResults(null);
+    if (pending.current || (sourceId ? !matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
+    pending.current = true; setBusy(true); setAiError(""); setAiResults(null); setAnalysis(null);
     try {
       await sessionRequired();
-      const result = await api.reportMatches(matchReportId, reports);
-      if (active.current) setAiResults(result);
+      if (sourceId) {
+        const result = await api.reportMatches(sourceId, reports);
+        if (active.current) { setAiResults(result.matches); setAnalysis(result.analysis); }
+      } else {
+        const result = await api.matches(aiText.trim(), reports, searchAttributes);
+        if (active.current) setAiResults(result);
+      }
     } catch (err) { if (active.current) setAiError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
@@ -241,7 +249,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
       resetForm();
       setNotice("Your report" + (photoFile ? " and photo were" : " was") + " saved.");
       setView(createdType === "lost" ? "ai" : "mine");
-      if (createdType === "lost") { setMatchReportId(result.report.id); setAiResults(null); setAiError(""); }
+      if (createdType === "lost") { setSourceId(result.report.id); setAiResults(null); setAnalysis(null); setAiError(""); }
       await loadReports();
     } catch (err) { if (active.current) setFormError(errorMessage(err)); }
     finally { posting.current = false; if (active.current) setPostBusy(false); }
@@ -270,8 +278,6 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
         <h2 style={{ fontSize: 22 }}>{selected.title}</h2>
         <div className="tags"><span className="tag">{selected.category}</span><span className="tag">{selected.status}</span></div>
         <div className="info"><p>{selected.description}</p><div><b>Location:</b> {selected.location}</div><div><b>Reported:</b> {new Date(selected.created_at).toLocaleDateString()}</div></div>
-        {selected.user_id === user.id && selected.report_type === "lost" && selected.status === "open" &&
-          <button className="big" onClick={() => showMatches(selected)}>Find matches for this report</button>}
         {claimsLoading && <p role="status">Loading claims…</p>}
         {claimsError && <p className="err" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></p>}
         {myClaim ? <p role="status">Your claim: <b>{myClaim.status}</b></p> :
@@ -291,37 +297,48 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
           </div>)}
         </>}
         {actionError && <p className="err" role="alert">{actionError}</p>}
+        {selected.user_id === user.id && selected.status === "open" && <button className="big" onClick={() => startMatching(selected)}>Find matches for this report</button>}
         <button className="btn2" disabled>Messaging is not available yet</button>
       </> : !loading && !loadError && <p className="empty">This report is no longer available.</p>}
     </section>}
 
     {view === "ai" && <section>
       <h2 style={{ fontSize: 20 }}>Find my item</h2>
-      <p className="note">Choose a saved lost report to compare with open found reports. Scores measure similarity, not ownership. Gemini may add analysis when the saved details need it.</p>
-      {!loading && !loadError && !matchableReports.length && <p className="empty">No open lost reports yet. Post a lost item to request matches.</p>}
-      <form onSubmit={runAi}>
-        <fieldset disabled={busy}>
-        <label className="field">Lost report<select required value={matchReportId} onChange={e => { setMatchReportId(e.target.value); setAiResults(null); setAiError(""); }}><option value="">Choose a saved report</option>{matchableReports.map(r => <option key={r.id} value={r.id}>{r.title} — {r.location}</option>)}</select></label>
-        <button className="big" disabled={busy || loading || !!loadError || !matchableReports.length}>{busy ? "Checking reports and Gemini…" : "Find matches"}</button>
-        </fieldset>
-      </form>
-      {busy && <p role="status">Comparing reports. Gemini analysis may take a moment…</p>}
+      <p className="note">Choose one of your saved lost or found reports to match it against opposite-type reports in Supabase. Gemini enriches matches when more evidence is needed. Scores indicate similarity, not ownership.</p>
+      <form onSubmit={runAi}><fieldset disabled={busy}>
+        <label className="field">Your report
+          <select value={sourceId} onChange={e => { setSourceId(e.target.value); setAiResults(null); setAnalysis(null); setAiError(""); }}>
+            <option value="">Quick text search (weighted ranking only)</option>
+            {matchableItems.map(report => <option key={report.id} value={report.id}>{report.report_type === "lost" ? "Lost" : "Found"}: {report.title}</option>)}
+          </select>
+        </label>
+        {!loading && !loadError && !matchableItems.length && <p className="note">Post a lost or found item using + to request report matches.</p>}
+        {!sourceId && <>
+          <p className="note">Quick search uses weighted similarity only. Save a report to request Gemini analysis.</p>
+          <textarea className="box" required maxLength={2000} value={aiText} onChange={e => { setAiText(e.target.value); setAiResults(null); }} placeholder="Black backpack with a red keychain, lost near the library" aria-label="Describe your lost item" />
+          <label className="field">Item category<select required value={searchAttributes.category} onChange={e => { setSearchAttributes({ ...searchAttributes, category: e.target.value }); setAiResults(null); }}><option value="">Choose a category</option>{categories.filter(c => c !== "All").map(c => <option key={c}>{c}</option>)}</select></label>
+          <label className="field">Color (optional)<input maxLength={100} value={searchAttributes.color} onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
+          <label className="field">Brand (optional)<input maxLength={100} value={searchAttributes.brand} onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
+        </>}
+        <button className="big" disabled={busy || loading || !!loadError}>{busy ? "Comparing reports…" : sourceId ? "Find report matches" : "Quick search"}</button>
+      </fieldset></form>
+      {busy && <p role="status">{sourceId ? "Comparing saved reports. Gemini analysis may take a moment…" : "Ranking open found reports…"}</p>}
       {aiError && <p className="err" role="alert">{aiError}</p>}
-      {aiResults && <>
-        {aiResults.analysis.state === "unavailable" && <p className="notice" role="status">Gemini is unavailable. These are fallback similarity rankings from saved report details; AI analysis was not completed.</p>}
-        {aiResults.analysis.state === "partial" && <p className="notice" role="status">Gemini analysis was incomplete. These rankings also use saved report details. {aiResults.analysis.issues.includes("quota") ? "Gemini quota was reached." : aiResults.analysis.issues.includes("timeout") ? "Gemini timed out." : "Some details could not be analyzed."}</p>}
-        {aiResults.analysis.state === "completed" && <p className="notice" role="status">Gemini analysis completed for {aiResults.analysis.succeeded} report{aiResults.analysis.succeeded === 1 ? "" : "s"}.</p>}
-        {aiResults.analysis.state === "not_needed" && <p className="note" role="status">Ranked using saved report details; Gemini analysis was not needed.</p>}
-        <h2>Report matches</h2>
-        {!aiResults.matches.length && <p className="empty">No matching open found reports yet. Check back later.</p>}
-        {aiResults.matches.map(({ report, score, reasons }) => <button className="match" key={report.id} onClick={() => openItem(report)}>
+      {analysis?.state === "unavailable" && <p className="notice" role="status">Gemini is unavailable. These are fallback similarity rankings from saved report details; AI analysis was not completed.</p>}
+      {analysis?.state === "partial" && <p className="notice" role="status">Gemini analysis was incomplete. These rankings also use saved report details. {analysis.issues.includes("quota") ? "Gemini quota was reached." : analysis.issues.includes("timeout") ? "Gemini timed out." : "Some details could not be analyzed."}</p>}
+      {analysis?.state === "completed" && <p className="notice" role="status">Gemini analysis completed for {analysis.succeeded} report{analysis.succeeded === 1 ? "" : "s"}.</p>}
+      {analysis?.state === "not_needed" && <p className="note" role="status">Ranked using saved report details; Gemini analysis was not needed.</p>}
+      {aiResults && <><h2>{sourceId ? "Report matches" : "Quick search results"}</h2>
+        {!aiResults.length && <p className="empty">No matches yet. Check back later or try another search.</p>}
+        {aiResults.map(({ report, score, reasons }) => <button className="match" key={report.id} onClick={() => openItem(report)}>
           <ReportPhoto report={report} className="th" /><div><b>{report.title}</b><div className="sub">{report.location}</div><span className="tag">{score}/100 similarity</span><p className="note">{reasons.join(" · ")}</p></div>
         </button>)}
       </>}
     </section>}
 
     {view === "post" && <form onSubmit={postItem} aria-busy={postBusy}>
-      <h2 style={{ fontSize: 20 }}>Post an item</h2>
+      <h2 style={{ fontSize: 20 }}>Post a {reportType} item</h2>
+      <fieldset disabled={postBusy || !!savedReport}><legend>What happened?</legend><div className="row"><label><input type="radio" name="reportType" checked={reportType === "lost"} onChange={() => setReportType("lost")} /> Lost an item</label><label><input type="radio" name="reportType" checked={reportType === "found"} onChange={() => setReportType("found")} /> Found an item</label></div></fieldset>
       <p className="note">Photo: JPEG, PNG or WebP, up to 5 MiB. Keep identifying private details out of the public description.</p>
       <label className="snap">
         {photoFile && photo ? (
@@ -331,7 +348,6 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
         <input key={photoInput} type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhoto} disabled={postBusy} aria-label="Item photo" className="photo-input" />
       </label>
       <fieldset disabled={postBusy || !!savedReport}>
-        <label className="field">Report type<select value={reportType} onChange={e => setReportType(e.target.value as "lost" | "found")}><option value="found">Found item</option><option value="lost">Lost item</option></select></label>
         <label className="field">Item name<input required maxLength={120} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Black backpack" /></label>
         <label className="field">Description<textarea className="box" required maxLength={3000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={reportType === "lost" ? "Describe identifying details that could help match your item." : "Describe the item and where it is being held."} /></label>
         <label className="field">Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{postCategories.map(c => <option key={c}>{c}</option>)}</select></label>
@@ -342,15 +358,15 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
       {savedReport && <button type="button" className="btn2" disabled={postBusy} onClick={() => {
         const saved = savedReport;
         resetForm(); setNotice("The report is saved without a confirmed photo upload.");
-        if (saved.report_type === "lost") { setMatchReportId(saved.id); setAiResults(null); setView("ai"); }
+        if (saved.report_type === "lost") { setSourceId(saved.id); setAiResults(null); setAnalysis(null); setView("ai"); }
         else setView("mine");
       }}>Keep saved report and finish without photo</button>}
     </form>}
 
     {view === "mine" && <section>
       <div className="row"><h2 style={{ fontSize: 20 }}>My items and claims</h2><button className="small" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh</button></div>
-      {!loading && !loadError && !myItems.length && <p className="empty">You have not posted anything yet. Tap + to post an item.</p>}
-      {myItems.map(item => <button className="match" key={item.id} onClick={() => openItem(item)}><ReportPhoto report={item} className="th" /><div><b>{item.title}</b><div className="sub">{item.location}</div><span className="tag">{item.report_type} · {item.status}</span></div></button>)}
+      {!loading && !loadError && !myItems.length && <p className="empty">You have not posted anything yet. Tap + to post a lost or found item.</p>}
+      {myItems.map(item => <div key={item.id}><button className="match" onClick={() => openItem(item)}><ReportPhoto report={item} className="th" /><div><b>{item.title}</b><div className="sub">{item.location}</div><span className="tag">{item.report_type} · {item.status}</span></div></button>{item.status === "open" && <button className="small" onClick={() => startMatching(item)}>Find AI matches</button>}</div>)}
       <h2>Your claims</h2>
       {claimsLoading && <p role="status">Loading claims…</p>}
       {claimsError && <p className="err" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></p>}
@@ -366,7 +382,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     <nav aria-label="Main navigation"><div>
       <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>Browse</button>
       <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => setView("ai")}>AI search</button>
-      <button className="plus" aria-label="Post an item" onClick={() => setView("post")}>+</button>
+      <button className="plus" aria-label="Post lost or found item" onClick={() => setView("post")}>+</button>
       <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>My items</button>
       <button className={tab === "chat" ? "on" : ""} aria-current={tab === "chat" ? "page" : undefined} onClick={() => setView("chat")}>Messages</button>
     </div></nav>

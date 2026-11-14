@@ -42,13 +42,14 @@ claim/image tests alongside the new frontend tests.
   cannot be submitted through the UI. Only report owners see decision buttons;
   those use `PATCH /api/claims/[id]`. The backend remains the authority on access
   and concurrent decisions. No claims are approved automatically.
-- Matching: users choose one of their saved, open lost reports. The browser calls
-  `GET /api/reports/[id]/matches` without supplying candidate data. The returned
-  report IDs are joined to authenticated `GET /api/reports` rows; titles, scores,
-  reasons and private signed photos appear in the result cards. The server's
-  `analysis.state` determines the message: completed Gemini analysis, partial
-  analysis, unavailable Gemini with fallback rankings, or Gemini not needed.
-  The older client-supplied `POST /api/matches` is no longer used by the UI.
+- Matching: users choose one of their saved, open lost or found reports. The
+  browser calls `GET /api/reports/[id]/matches` without supplying candidate data.
+  Returned IDs are joined to authenticated `GET /api/reports` rows; titles,
+  scores, reasons and private signed photos appear in the result cards. The
+  server's `analysis.state` determines the message: completed Gemini analysis,
+  partial analysis, unavailable Gemini with fallback rankings, or Gemini not
+  needed. Main's separate quick text search still uses `POST /api/matches` for
+  weighted ranking and is clearly labeled as running without Gemini.
 - Messages: no backend routes or schema exist. The navigation and unavailable
   composer remain visible, with sending disabled. Seed conversations and
   in-memory fake sends were removed.
@@ -75,12 +76,10 @@ claim/image tests alongside the new frontend tests.
 
 ## Verification limits and remaining work
 
-On this change, `npm run typecheck` passed, `npm run lint` passed with the
-existing unused `_headers` warning in `lib/supabase/server.ts`, and all 39
-tests passed. The default Turbopack build failed in this environment because
-its CSS worker could not bind a local port, including outside the sandbox;
-`npm run build -- --webpack` passed. Node emits an existing typeless ES-module
-warning during tests.
+After resolving the merge with `origin/main`, `npm run typecheck`, `npm run lint`,
+`npm test` (41 tests), and the default Turbopack `npm run build` passed. Lint
+reported the existing unused `_headers` warning in `lib/supabase/server.ts`.
+Node emits an existing typeless ES-module warning during tests.
 
 Local Supabase URL/publishable-key variables are absent. Live sign-in, RLS,
 report persistence, signed Storage delivery and the two-account claim workflow
@@ -140,7 +139,9 @@ owner-only decisions. No database behavior was changed to mask these limits.
    and inspect Network for `GET /api/reports/[id]/matches`. Verify the found
    report's title, score, reasons and signed photo. Confirm Gemini unavailable
    and partial states do not claim completed AI analysis; test empty/error states.
-   Choose Messages and verify sending is unavailable.
+   Switch to quick text search and confirm it uses `POST /api/matches` and is
+   labeled as weighted ranking only. Choose Messages and verify sending is
+   unavailable.
 8. Toggle dark mode, refresh, and test keyboard focus and narrow-screen bottom
    navigation. Sign out and verify private workspace data disappears. Test an
    expired session/network failure and confirm a visible error rather than
