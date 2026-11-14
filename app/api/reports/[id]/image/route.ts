@@ -1,3 +1,4 @@
+import { canWriteAsPermanentUser, permanentAccountRequired } from "@/lib/guest-permissions";
 import {
   isReportImagePath,
   REPORT_IMAGE_BUCKET,
@@ -16,6 +17,7 @@ export async function POST(request: Request, { params }: Context) {
   if (authError || !user) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }
+  if (!canWriteAsPermanentUser(user)) return permanentAccountRequired();
 
   const { id } = await params;
   if (!uuidPattern.test(id)) {
