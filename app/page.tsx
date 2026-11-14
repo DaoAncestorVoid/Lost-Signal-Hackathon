@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
@@ -51,7 +52,10 @@ export default function Home() {
   return <>
     <main>
       <div className="row">
-        <h1>Lost Signal</h1>
+        <h1 className="brand">
+          <Image src="/icon.svg" alt="" width={40} height={40} />
+          LostSignal
+        </h1>
         <button className="tog" onClick={toggleTheme} aria-pressed={dark}>Dark mode: {dark ? "on" : "off"}</button>
       </div>
       {auth.error && <p className="err" role="alert">{auth.error}</p>}
