@@ -1,92 +1,29 @@
-
-import { NextResponse } from "next/server";
 import { analyzeImage } from "@/lib/gemini";
-
-
-
-const ALLOWED_TYPES = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-]);
-
-const MAX_SIZE = 4 * 1024 * 1024;
+import { MAX_IMAGE_BYTES, validateImage } from "@/lib/reports/images";
+import { authorizeAnalysis, analysisError } from "@/lib/ai-request";
+import { readLimitedBody, AnalysisRequestError } from "@/lib/ai-protection";
 
 export async function POST(request: Request) {
   try {
-    const formData = await request.formData();
-    const image = formData.get("image");
-
-    if (!(image instanceof File)) {
-      return NextResponse.json(
-        { error: "An image is required" },
-        { status: 400 }
-      );
+    const denied = await authorizeAnalysis(request);
+    if (denied) return denied;
+    const contentType = request.headers.get("content-type") ?? "";
+    if (!contentType.toLowerCase().startsWith("multipart/form-data;")) {
+      throw new AnalysisRequestError(415, "Content-Type must be multipart/form-data");
     }
-
-    if (!ALLOWED_TYPES.has(image.type)) {
-      return NextResponse.json(
-        { error: "Unsupported image format" },
-        { status: 400 }
-      );
+    // Permit 64 KiB multipart overhead beyond the shared 5 MiB file limit.
+    const bytes = await readLimitedBody(request, MAX_IMAGE_BYTES + 64 * 1024);
+    let form: FormData;
+    try {
+      form = await new Response(Buffer.from(bytes), { headers: { "Content-Type": contentType } }).formData();
+    } catch { throw new AnalysisRequestError(400, "Invalid multipart form"); }
+    const entries = [...form.entries()];
+    if (entries.length !== 1 || entries[0][0] !== "image" || !(entries[0][1] instanceof File)) {
+      throw new AnalysisRequestError(400, "Provide one image file in the image field");
     }
-
-    if (image.size === 0 || image.size > MAX_SIZE) {
-      return NextResponse.json(
-        { error: "Image must be under 4 MB" },
-        { status: 400 }
-      );
-    }
-
-    const bytes = await image.arrayBuffer();
-    const base64 = Buffer.from(bytes).toString("base64");
-
-    const attributes = await analyzeImage(
-      base64,
-      image.type
-    );
-
-    return NextResponse.json({
-      success: true,
-      attributes,
-    });
-  } catch (error) {
-    const apiError = error as {
-      status?: number;
-      statusCode?: number;
-      message?: string;
-    };
-
-    const status = apiError.status ?? apiError.statusCode ?? 500;
-
-    if (status === 429) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Gemini API quota exceeded. Try again later.",
-        },
-        { status: 429 }
-      );
-    }
-
-    if (status === 503) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Gemini is temporarily overloaded.",
-        },
-        { status: 503 }
-      );
-    }
-
-    console.error("Image analysis failed:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: "Image analysis failed",
-      },
-      { status: 500 }
-    );
-  }
+    const image = await validateImage(entries[0][1]);
+    if ("error" in image) throw new AnalysisRequestError(400, image.error);
+    const attributes = await analyzeImage(Buffer.from(image.bytes).toString("base64"), image.contentType);
+    return Response.json({ success: true, attributes }, { headers: { "Cache-Control": "no-store" } });
+  } catch (error) { return analysisError(error); }
 }
