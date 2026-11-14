@@ -65,7 +65,7 @@ export default function Home() {
           <span className="sub">{auth.user.is_anonymous ? "Guest session · Browse and try AI" : auth.user.email}</span>
           <button className="small" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : auth.user.is_anonymous ? "Sign in / Sign up" : "Sign out"}</button>
         </div>
-        {auth.user.is_anonymous && <p className="notice" role="status">You're exploring as a guest. Browse reports and try limited AI matching. To post items or claim one, choose Sign in / Sign up. Leaving this guest session may remove access to its history.</p>}
+        {auth.user.is_anonymous && <p className="notice" role="status">You&apos;re exploring as a guest. Browse reports and try limited AI matching. To post items or claim one, choose Sign in / Sign up. Leaving this guest session may remove access to its history.</p>}
         <Workspace key={auth.user.id} user={auth.user} client={auth.client} />
       </> : <AuthForm client={auth.client} />}
     </main>
