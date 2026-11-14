@@ -6,6 +6,9 @@ import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
 import { ReportGrid } from "./components/report-card";
+import { FoundReportsMap } from "./components/campus-map/found-reports-map";
+import { LocationPicker } from "./components/campus-map/location-picker";
+import mapStyles from "./components/campus-map/campus-map.module.css";
 import { LostSignalApi, browseCategories, browseReports, saveReport, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewReport } from "@/lib/reports/validation";
 import { validateNewClaim } from "@/lib/claims/validation";
@@ -74,6 +77,7 @@ export default function Home() {
 
 function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   const [view, setView] = useState<View>("browse");
+  const [browseMode, setBrowseMode] = useState<"list" | "map">("list");
   const guest = user.is_anonymous === true;
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -271,9 +275,17 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
         <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search found items…" aria-label="Search found items" />
         <button className="ai" onClick={() => setView("ai")}>AI</button>
       </div>
-      <div className="cats">{categories.map(c => <button key={c} className={"cat" + (category === c ? " on" : "")} aria-pressed={category === c} onClick={() => setCategory(c)}>{c}</button>)}</div>
-      <div className="row"><h2>Recently found</h2><button className="small" disabled={loading} onClick={() => void loadReports()}>Refresh</button></div>
-      <ReportGrid reports={filtered} loading={loading} error={loadError} onRetry={() => void loadReports()} onOpen={openItem} />
+      {browseMode === "list" && <div className="cats">{categories.map(c => <button key={c} className={"cat" + (category === c ? " on" : "")} aria-pressed={category === c} onClick={() => setCategory(c)}>{c}</button>)}</div>}
+      <div className={mapStyles.browseHeading}><h2>{browseMode === "map" ? "Campus map" : "Recently found"}</h2>
+        <div className={mapStyles.viewToggle} role="group" aria-label="Browse view">
+          <button type="button" aria-pressed={browseMode === "list"} onClick={() => setBrowseMode("list")}>List</button>
+          <button type="button" aria-pressed={browseMode === "map"} onClick={() => setBrowseMode("map")}>Map</button>
+        </div>
+      </div>
+      {browseMode === "map" && !loading && !loadError ? <FoundReportsMap reports={filtered} onOpen={openItem} categories={categories} category={category} onCategoryChange={setCategory} /> :
+        <ReportGrid reports={filtered} loading={loading} error={loadError} onRetry={() => void loadReports()} onOpen={openItem} />}
+      {browseMode === "list" && <button className="small" disabled={loading} onClick={() => void loadReports()}>Refresh</button>}
+      {browseMode === "map" && !loading && !loadError && <button className="small" onClick={() => void loadReports()}>Refresh reports</button>}
     </section>}
 
     {view === "detail" && <section>
@@ -356,7 +368,8 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
         <label className="field">Item name<input required maxLength={120} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Black backpack" /></label>
         <label className="field">Description<textarea className="box" required maxLength={3000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={reportType === "lost" ? "Describe identifying details that could help match your item." : "Describe the item and where it is being held."} /></label>
         <label className="field">Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{postCategories.map(c => <option key={c}>{c}</option>)}</select></label>
-        <label className="field">{reportType === "lost" ? "Where did you lose it?" : "Where did you find it?"}<input required maxLength={200} value={form.place} onChange={e => setForm({ ...form, place: e.target.value })} placeholder="Library, 2nd floor" /></label>
+        <LocationPicker label={reportType === "lost" ? "Where did you lose it?" : "Where did you find it?"}
+          value={form.place} onChange={place => setForm(previous => ({ ...previous, place }))} disabled={postBusy || !!savedReport} />
       </fieldset>
       {formError && <p className="err" role="alert">{formError}</p>}
       <button className="big" disabled={postBusy || photoValidating}>{postBusy ? "Saving…" : photoValidating ? "Checking photo…" : savedReport ? "Retry photo upload" : reportType === "lost" ? "Post lost item" : "Post found item"}</button>
