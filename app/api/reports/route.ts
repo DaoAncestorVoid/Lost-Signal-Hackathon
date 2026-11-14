@@ -1,3 +1,4 @@
+import { canWriteAsPermanentUser, permanentAccountRequired } from "@/lib/guest-permissions";
 import { validateNewReport } from "@/lib/reports/validation";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,6 +8,7 @@ export async function POST(request: Request) {
   if (authError || !user) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }
+  if (!canWriteAsPermanentUser(user)) return permanentAccountRequired();
 
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
     return Response.json({ error: "Content-Type must be application/json" }, { status: 415 });
