@@ -144,8 +144,8 @@ test("matching handles empty results, API errors and unknown result IDs without 
 
 test("category buttons deduplicate different casing, and filtering includes every case", () => {
   const rows = [
-    { ...report, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", category: "other" },
-    { ...report, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", category: "Other" },
+    report(10, { category: "other" }),
+    report(11, { category: "Other" }),
   ];
   assert.deepEqual(browseCategories(rows, ["Bags", "Other"]), ["All", "Bags", "Other"]);
   assert.equal(browseReports(rows, "Other").length, 2);
