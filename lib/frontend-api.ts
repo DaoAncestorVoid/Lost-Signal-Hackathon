@@ -45,8 +45,8 @@ export class LostSignalApi {
   private fetcher: typeof fetch;
   constructor(fetcher: typeof fetch = (...args) => fetch(...args)) { this.fetcher = fetcher; }
 
-  private async request<T>(url: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> {
-    const timeout = AbortSignal.timeout(30_000);
+  private async request<T>(url: string, schema: z.ZodType<T>, init: RequestInit = {}, timeoutMs = 30_000): Promise<T> {
+    const timeout = AbortSignal.timeout(timeoutMs);
     const signal = init.signal ? AbortSignal.any([init.signal, timeout]) : timeout;
     const response = await this.fetcher(url, { ...init, signal, credentials: "same-origin", cache: "no-store" });
     let body: unknown;
@@ -107,7 +107,7 @@ export class LostSignalApi {
           reasons: z.array(z.string()),
         })),
         analysis: ReportMatchAnalysisSchema,
-      }),
+      }), {}, 90_000,
     );
     if (response.source_report_id !== reportId) {
       throw new ApiError("Matching returned the wrong source report.", 502);
