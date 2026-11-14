@@ -6,7 +6,7 @@ import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
 import { ReportGrid } from "./components/report-card";
-import { LostSignalApi, browseReports, saveReport, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
+import { LostSignalApi, browseCategories, browseReports, saveReport, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewReport } from "@/lib/reports/validation";
 import { validateNewClaim } from "@/lib/claims/validation";
 import { validateImage } from "@/lib/reports/images";
@@ -152,7 +152,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   }, [photoFile]);
 
   const filtered = browseReports(reports, category, query);
-  const categories = ["All", ...new Set([...postCategories, ...reports.map(r => r.category)])];
+  const categories = browseCategories(reports, postCategories);
   const selected = reports.find(r => r.id === selectedId);
   const myItems = reports.filter(r => r.user_id === user.id);
   const matchableItems = guest ? reports.filter(r => r.status === "open").slice(0, 20) : myItems.filter(r => r.status === "open");
