@@ -197,7 +197,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   }
   async function runAi(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current || (!sourceId && !aiText.trim()) || loading || loadError) return;
+    if (pending.current || (sourceId ? !matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
     pending.current = true; setBusy(true); setAiError(""); setAiResults(null); setAnalysis(null);
     try {
       await sessionRequired();
@@ -250,9 +250,11 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
         await loadReports();
         return;
       }
+      const createdType = result.report.report_type;
       resetForm();
       setNotice("Your report" + (photoFile ? " and photo were" : " was") + " saved.");
-      setView("mine");
+      setView(createdType === "lost" ? "ai" : "mine");
+      if (createdType === "lost") { setSourceId(result.report.id); setAiResults(null); setAnalysis(null); setAiError(""); }
       await loadReports();
     } catch (err) { if (active.current) setFormError(errorMessage(err)); }
     finally { posting.current = false; if (active.current) setPostBusy(false); }
@@ -300,7 +302,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
           </div>)}
         </>}
         {actionError && <p className="err" role="alert">{actionError}</p>}
-        {selected.user_id === user.id && selected.status === "open" && <button className="big" onClick={() => startMatching(selected)}>Find AI matches for this report</button>}
+        {selected.user_id === user.id && selected.status === "open" && <button className="big" onClick={() => startMatching(selected)}>Find matches for this report</button>}
         <button className="btn2" disabled>Messaging is not available yet</button>
       </> : !loading && !loadError && <p className="empty">This report is no longer available.</p>}
     </section>}
@@ -311,23 +313,28 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
       <form onSubmit={runAi}><fieldset disabled={busy}>
         <label className="field">{guest ? "Demo report" : "Your report"}
           <select value={sourceId} onChange={e => { setSourceId(e.target.value); setAiResults(null); setAnalysis(null); setAiError(""); }}>
-            <option value="">Quick text search (without Gemini)</option>
+            <option value="">Quick text search (weighted ranking only)</option>
             {matchableItems.map(report => <option key={report.id} value={report.id}>{report.report_type === "lost" ? "Lost" : "Found"}: {report.title}</option>)}
           </select>
         </label>
-        {!matchableItems.length && <p className="note">{guest ? "No open reports available for demo matching yet." : "Post a lost or found item using + to enable Gemini-enhanced matching."}</p>}
+        {!loading && !loadError && !matchableItems.length && <p className="note">{guest ? "No open reports available for demo matching yet." : "Post a lost or found item using + to request report matches."}</p>}
         {!sourceId && <>
+          <p className="note">Quick search uses weighted similarity only. {guest ? "Choose an open demo report for limited Gemini analysis." : "Save a report to request Gemini analysis."}</p>
           <textarea className="box" required maxLength={2000} value={aiText} onChange={e => { setAiText(e.target.value); setAiResults(null); }} placeholder="Black backpack with a red keychain, lost near the library" aria-label="Describe your lost item" />
           <label className="field">Item category<select required value={searchAttributes.category} onChange={e => { setSearchAttributes({ ...searchAttributes, category: e.target.value }); setAiResults(null); }}><option value="">Choose a category</option>{categories.filter(c => c !== "All").map(c => <option key={c}>{c}</option>)}</select></label>
           <label className="field">Color (optional)<input maxLength={100} value={searchAttributes.color} onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
           <label className="field">Brand (optional)<input maxLength={100} value={searchAttributes.brand} onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
         </>}
-        <button className="big" disabled={busy || loading || !!loadError}>{busy ? "Finding matches…" : sourceId ? "Find AI-enhanced matches" : "Quick search"}</button>
+        <button className="big" disabled={busy || loading || !!loadError}>{busy ? "Comparing reports…" : sourceId ? "Find report matches" : "Quick search"}</button>
       </fieldset></form>
+      {busy && <p role="status">{sourceId ? "Comparing saved reports. Gemini analysis may take a moment…" : "Ranking open found reports…"}</p>}
       {aiError && <p className="err" role="alert">{aiError}</p>}
-      {analysis && <p className="note" role="status">Gemini analysis: {analysis.state.replaceAll("_", " ")} · {analysis.succeeded}/{analysis.attempted} successful calls{analysis.issues.length ? ` · Issues: ${analysis.issues.join(", ")}` : ""}. {analysis.state === "not_needed" ? "Existing evidence was strong enough; Gemini did not need to run." : ""}</p>}
-      {aiResults && <><h2>Top matches</h2>
-        {!aiResults.length && <p className="empty">No matches yet. Try another description or check back later.</p>}
+      {analysis?.state === "unavailable" && <p className="notice" role="status">Gemini is unavailable. These are fallback similarity rankings from saved report details; AI analysis was not completed.</p>}
+      {analysis?.state === "partial" && <p className="notice" role="status">Gemini analysis was incomplete. These rankings also use saved report details. {analysis.issues.includes("quota") ? "Gemini quota was reached." : analysis.issues.includes("timeout") ? "Gemini timed out." : "Some details could not be analyzed."}</p>}
+      {analysis?.state === "completed" && <p className="notice" role="status">Gemini analysis completed for {analysis.succeeded} report{analysis.succeeded === 1 ? "" : "s"}.</p>}
+      {analysis?.state === "not_needed" && <p className="note" role="status">Ranked using saved report details; Gemini analysis was not needed.</p>}
+      {aiResults && <><h2>{sourceId ? "Report matches" : "Quick search results"}</h2>
+        {!aiResults.length && <p className="empty">No matches yet. Check back later or try another search.</p>}
         {aiResults.map(({ report, score, reasons }) => <button className="match" key={report.id} onClick={() => openItem(report)}>
           <ReportPhoto report={report} className="th" /><div><b>{report.title}</b><div className="sub">{report.location}</div><span className="tag">{score}/100 similarity</span><p className="note">{reasons.join(" · ")}</p></div>
         </button>)}
@@ -347,14 +354,17 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
       </label>
       <fieldset disabled={postBusy || !!savedReport}>
         <label className="field">Item name<input required maxLength={120} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Black backpack" /></label>
-        <label className="field">Description<textarea className="box" required maxLength={3000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={reportType === "lost" ? "Describe what you lost and any identifying features." : "Describe the item and where it is being held."} /></label>
+        <label className="field">Description<textarea className="box" required maxLength={3000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={reportType === "lost" ? "Describe identifying details that could help match your item." : "Describe the item and where it is being held."} /></label>
         <label className="field">Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{postCategories.map(c => <option key={c}>{c}</option>)}</select></label>
         <label className="field">{reportType === "lost" ? "Where did you lose it?" : "Where did you find it?"}<input required maxLength={200} value={form.place} onChange={e => setForm({ ...form, place: e.target.value })} placeholder="Library, 2nd floor" /></label>
       </fieldset>
       {formError && <p className="err" role="alert">{formError}</p>}
-      <button className="big" disabled={postBusy || photoValidating}>{postBusy ? "Saving…" : photoValidating ? "Checking photo…" : savedReport ? "Retry photo upload" : "Post item"}</button>
+      <button className="big" disabled={postBusy || photoValidating}>{postBusy ? "Saving…" : photoValidating ? "Checking photo…" : savedReport ? "Retry photo upload" : reportType === "lost" ? "Post lost item" : "Post found item"}</button>
       {savedReport && <button type="button" className="btn2" disabled={postBusy} onClick={() => {
-        resetForm(); setNotice("The report is saved without a confirmed photo upload."); setView("mine");
+        const saved = savedReport;
+        resetForm(); setNotice("The report is saved without a confirmed photo upload.");
+        if (saved.report_type === "lost") { setSourceId(saved.id); setAiResults(null); setAnalysis(null); setView("ai"); }
+        else setView("mine");
       }}>Keep saved report and finish without photo</button>}
     </form>)}
 

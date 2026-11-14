@@ -21,8 +21,9 @@ claim/image tests alongside the new frontend tests.
 - Photos: `GET /api/reports/[id]/image` supplies private signed URLs. Images
   renew after four minutes and report unavailable photos without inventing
   placeholders that resemble uploaded photos. No raw storage URL is inferred.
-- Submission: the form reuses `validateNewReport`, then calls `POST /api/reports`
-  with `report_type`, `title`, `description`, `category`, and `location` only.
+- Submission: the form supports lost and found items, reuses `validateNewReport`,
+  then calls `POST /api/reports` with `report_type`, `title`, `description`,
+  `category`, and `location` only. A saved lost report opens the matching screen.
   The prototype's unsupported held-at field is replaced by the real required
   description, whose prompt lets users describe where the item is held.
   No AI or status fields are forged. The existing validator checks photo MIME,
@@ -41,15 +42,14 @@ claim/image tests alongside the new frontend tests.
   cannot be submitted through the UI. Only report owners see decision buttons;
   those use `PATCH /api/claims/[id]`. The backend remains the authority on access
   and concurrent decisions. No claims are approved automatically.
-- Matching: `POST /api/matches` exists; no report-specific matches GET exists.
-  Search requires a category and accepts color/brand plus a description. This
-  supplies enough structured evidence for the existing weighted threshold;
-  description-only scores cannot pass it. Candidates are authorized open found
-  reports, mapped to shared matching types and sent in batches of at most 25.
-  The top ten overall scores and server explanations are displayed. Unknown
-  AI attributes are omitted; database JSONB is not assumed to match one schema.
-  This is weighted matching, not Gemini inference; the UI says so and sends
-  no Gemini requests. Existing Gemini endpoints and code are unchanged.
+- Matching: users choose one of their saved, open lost or found reports. The
+  browser calls `GET /api/reports/[id]/matches` without supplying candidate data.
+  Returned IDs are joined to authenticated `GET /api/reports` rows; titles,
+  scores, reasons and private signed photos appear in the result cards. The
+  server's `analysis.state` determines the message: completed Gemini analysis,
+  partial analysis, unavailable Gemini with fallback rankings, or Gemini not
+  needed. Main's separate quick text search still uses `POST /api/matches` for
+  weighted ranking and is clearly labeled as running without Gemini.
 - Messages: no backend routes or schema exist. The navigation and unavailable
   composer remain visible, with sending disabled. Seed conversations and
   in-memory fake sends were removed.
@@ -64,7 +64,7 @@ claim/image tests alongside the new frontend tests.
 - `app/components/auth.tsx`: authentication subscription and credential form.
 - `app/components/report-photo.tsx`: signed-photo lifecycle and failures.
 - `app/components/report-card.tsx`: reusable cards and browse state rendering.
-- `lib/frontend-api.ts`: validated API adapter, report/matching mapping,
+- `lib/frontend-api.ts`: validated API adapter, report matching response mapping,
   filtering and partial upload orchestration. It imports no Gemini server code.
 - `app/globals.css`: Tailwind import, focus/disabled states and layout fixes.
 - `app/layout.tsx`: consistent metadata branding.
@@ -76,10 +76,10 @@ claim/image tests alongside the new frontend tests.
 
 ## Verification limits and remaining work
 
-Final local results: `npm run typecheck` passed; `npm run lint` passed with
-the existing unused `_headers` warning in `lib/supabase/server.ts`; `npm test`
-passed all 32 tests; `npm run build` passed. Node emits the existing typeless
-ES-module warning during tests. No package-lock changes were made.
+After resolving the merge with `origin/main`, `npm run typecheck`, `npm run lint`,
+`npm test` (41 tests), and the default Turbopack `npm run build` passed. Lint
+reported the existing unused `_headers` warning in `lib/supabase/server.ts`.
+Node emits an existing typeless ES-module warning during tests.
 
 Local Supabase URL/publishable-key variables are absent. Live sign-in, RLS,
 report persistence, signed Storage delivery and the two-account claim workflow
@@ -89,12 +89,11 @@ There is no browser automation installed, so interaction/visual checks must
 also be performed manually. The production build and server-render tests do
 not prove an end-to-end deployed workflow.
 
-Messaging and report-based `GET /api/reports/[id]/matches` are missing backend
-features. Existing POST matching is fully wired without inventing either API.
-AI enrichment persistence is not exposed by the report creation API; this UI
-does not attempt to write protected `ai_attributes` fields or spend Gemini
-quota enriching every candidate. Report deletion is not exposed by an API,
-so the prototype's local-only Remove action was removed.
+Messaging remains unavailable. AI enrichment persistence is not exposed by the
+report creation API; this UI does not attempt to write protected
+`ai_attributes` fields. The report matching endpoint controls Gemini usage and
+returns its analysis state. Report deletion is not exposed by an API, so the
+prototype's local-only Remove action was removed.
 
 Backend requests are cookie-authenticated and retain existing RLS. Configure
 the Supabase Auth site URL/allowed confirmation redirects for the deployment.
@@ -136,10 +135,13 @@ owner-only decisions. No database behavior was changed to mask these limits.
 6. Return to A, open My items and the report, review B's proof, and approve or
    reject through the visible controls. Refresh B's claims and verify the server
    status. An approved/resolved report should disappear from open browsing.
-7. Open AI search, select the report's exact category and enter its description
-   and any known color/brand. Inspect Network for `POST /api/matches` (not a
-   nonexistent matches GET or Gemini call). Verify score/explanation and the
-   empty/error states. Choose Messages and verify sending is unavailable.
+7. Post a lost item as student B. Open AI search, select the saved lost report,
+   and inspect Network for `GET /api/reports/[id]/matches`. Verify the found
+   report's title, score, reasons and signed photo. Confirm Gemini unavailable
+   and partial states do not claim completed AI analysis; test empty/error states.
+   Switch to quick text search and confirm it uses `POST /api/matches` and is
+   labeled as weighted ranking only. Choose Messages and verify sending is
+   unavailable.
 8. Toggle dark mode, refresh, and test keyboard focus and narrow-screen bottom
    navigation. Sign out and verify private workspace data disappears. Test an
    expired session/network failure and confirm a visible error rather than

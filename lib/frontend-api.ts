@@ -27,13 +27,12 @@ export type Claim = z.infer<typeof ClaimSchema>;
 export type RankedReport = { report: Report; score: number; reasons: string[] };
 export const ReportMatchAnalysisSchema = z.object({
   state: z.enum(["not_needed", "unavailable", "completed", "partial"]),
-  attempted: z.number().int().min(0),
-  succeeded: z.number().int().min(0),
+  attempted: z.number().int().nonnegative(),
+  succeeded: z.number().int().nonnegative(),
   issues: z.array(z.enum(["missing_image", "quota", "timeout", "provider_unavailable"])),
 });
 export type ReportMatchAnalysis = z.infer<typeof ReportMatchAnalysisSchema>;
 export type ReportMatchesResult = { matches: RankedReport[]; analysis: ReportMatchAnalysis };
-
 
 export class ApiError extends Error {
   status: number;
@@ -95,27 +94,21 @@ export class LostSignalApi {
     })).claim;
   }
   /** Match a saved report against opposite-type reports in Supabase using optional Gemini enrichment. */
-  async reportMatches(reportId: string, reports: readonly Report[]): Promise<ReportMatchesResult> {
-    const response = await this.request(
-      `/api/reports/${encodeURIComponent(reportId)}/matches`,
-      z.object({
-        source_report_id: z.string().uuid(),
-        count: z.number().int().min(0),
-        matches: z.array(z.object({
-          report_id: z.string().uuid(),
-          score: z.number().min(0).max(100),
-          reasons: z.array(z.string()),
-        })),
-        analysis: ReportMatchAnalysisSchema,
-      }), {}, 90_000,
-    );
-    if (response.source_report_id !== reportId) {
-      throw new ApiError("Matching returned the wrong source report.", 502);
-    }
-    const byId = new Map(reports.map(report => [report.id, report]));
+  async reportMatches(reportId: string, reports: readonly Report[], signal?: AbortSignal): Promise<ReportMatchesResult> {
+    const source = reports.find(report => report.id === reportId);
+    if (!source) throw new ApiError("Refresh reports before requesting matches.", 409);
+    const response = await this.request(`/api/reports/${encodeURIComponent(reportId)}/matches`, z.object({
+      source_report_id: z.string().uuid(), count: z.number().int().nonnegative(),
+      matches: z.array(z.object({
+        report_id: z.string().uuid(), score: z.number().min(0).max(100), reasons: z.array(z.string()),
+      })),
+      analysis: ReportMatchAnalysisSchema,
+    }), { signal }, 120_000);
+    if (response.source_report_id !== reportId || response.count !== response.matches.length)
+      throw new ApiError("Matching returned inconsistent report data.", 502);
     const matches = response.matches.map(match => {
-      const report = byId.get(match.report_id);
-      if (!report) throw new ApiError("Refresh reports before viewing matches.", 409);
+      const report = reports.find(r => r.id === match.report_id && r.report_type !== source.report_type && r.status === "open");
+      if (!report) throw new ApiError("A matching report is missing from the report list. Refresh reports and try again.", 502);
       return { report, score: match.score, reasons: match.reasons };
     });
     return { matches, analysis: response.analysis };
