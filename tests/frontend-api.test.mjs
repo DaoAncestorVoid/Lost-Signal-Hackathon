@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LostSignalApi, browseReports, saveReport, toMatchingItem } from "../lib/frontend-api.ts";
+import { LostSignalApi, browseCategories, browseReports, saveReport, toMatchingItem } from "../lib/frontend-api.ts";
 import { findMatches } from "../lib/matching.ts";
 import { validateNewReport } from "../lib/reports/validation.ts";
 import { validateNewClaim } from "../lib/claims/validation.ts";
@@ -140,4 +140,14 @@ test("matching handles empty results, API errors and unknown result IDs without 
   await assert.rejects(fail.matches("bag", [report()]), { status: 503 });
   const unexpected = new LostSignalApi(async () => json({ success: true, matches: [{ item: { id: "unknown" }, score: 90, reasons: [] }] }));
   await assert.rejects(unexpected.matches("bag", [report()]), { status: 502 });
+});
+
+test("category buttons deduplicate different casing, and filtering includes every case", () => {
+  const rows = [
+    { ...report, id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", category: "other" },
+    { ...report, id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", category: "Other" },
+  ];
+  assert.deepEqual(browseCategories(rows, ["Bags", "Other"]), ["All", "Bags", "Other"]);
+  assert.equal(browseReports(rows, "Other").length, 2);
+  assert.equal(browseReports(rows, "other").length, 2);
 });
