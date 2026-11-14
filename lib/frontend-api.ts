@@ -25,6 +25,15 @@ const ClaimSchema = z.object({
 });
 export type Claim = z.infer<typeof ClaimSchema>;
 export type RankedReport = { report: Report; score: number; reasons: string[] };
+export const ReportMatchAnalysisSchema = z.object({
+  state: z.enum(["not_needed", "unavailable", "completed", "partial"]),
+  attempted: z.number().int().min(0),
+  succeeded: z.number().int().min(0),
+  issues: z.array(z.enum(["missing_image", "quota", "timeout", "provider_unavailable"])),
+});
+export type ReportMatchAnalysis = z.infer<typeof ReportMatchAnalysisSchema>;
+export type ReportMatchesResult = { matches: RankedReport[]; analysis: ReportMatchAnalysis };
+
 
 export class ApiError extends Error {
   status: number;
@@ -85,8 +94,34 @@ export class LostSignalApi {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
     })).claim;
   }
+  /** Match a saved report against opposite-type reports in Supabase using optional Gemini enrichment. */
+  async reportMatches(reportId: string, reports: readonly Report[]): Promise<ReportMatchesResult> {
+    const response = await this.request(
+      `/api/reports/${encodeURIComponent(reportId)}/matches`,
+      z.object({
+        source_report_id: z.string().uuid(),
+        count: z.number().int().min(0),
+        matches: z.array(z.object({
+          report_id: z.string().uuid(),
+          score: z.number().min(0).max(100),
+          reasons: z.array(z.string()),
+        })),
+        analysis: ReportMatchAnalysisSchema,
+      }),
+    );
+    if (response.source_report_id !== reportId) {
+      throw new ApiError("Matching returned the wrong source report.", 502);
+    }
+    const byId = new Map(reports.map(report => [report.id, report]));
+    const matches = response.matches.map(match => {
+      const report = byId.get(match.report_id);
+      if (!report) throw new ApiError("Refresh reports before viewing matches.", 409);
+      return { report, score: match.score, reasons: match.reasons };
+    });
+    return { matches, analysis: response.analysis };
+  }
   async matches(description: string, reports: readonly Report[], attributes: { category?: string; color?: string; brand?: string } = {}): Promise<RankedReport[]> {
-    // No report-based matches GET endpoint exists. Use the existing POST contract.
+    // Free-text quick search remains available; saved reports use reportMatches above.
     const candidates = reports.filter(r => r.report_type === "found" && r.status === "open");
     const source: Item = { id: "search", reportType: "lost", status: "open", description,
       category: known(attributes.category), color: known(attributes.color), brand: known(attributes.brand) };
