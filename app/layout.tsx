@@ -2,7 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lost-Signal",
+  title: "Lost Signal",
   description:
     "Find lost items on campus. Post what you found and search with AI for what you lost.",
 };
