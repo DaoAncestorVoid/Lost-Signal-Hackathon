@@ -170,9 +170,20 @@ export async function saveReport(api: LostSignalApi, payload: NewReport, photo: 
   return { report, uploadError: null };
 }
 
+/** Case-insensitive category options, retaining familiar built-in labels. */
+export function browseCategories(reports: readonly Report[], defaults: readonly string[]): string[] {
+  const labels = new Map<string, string>();
+  for (const value of [...defaults, ...reports.map(report => report.category)]) {
+    const label = value.trim();
+    if (label && !labels.has(label.toLowerCase())) labels.set(label.toLowerCase(), label);
+  }
+  return ["All", ...labels.values()];
+}
+
 export function browseReports(reports: readonly Report[], category = "All", query = ""): Report[] {
   const search = query.trim().toLowerCase();
+  const chosenCategory = category.trim().toLowerCase();
   return reports.filter(r => r.report_type === "found" && r.status === "open" &&
-    (category === "All" || r.category === category) &&
+    (chosenCategory === "all" || r.category.trim().toLowerCase() === chosenCategory) &&
     `${r.title} ${r.description} ${r.location} ${r.category}`.toLowerCase().includes(search));
 }
