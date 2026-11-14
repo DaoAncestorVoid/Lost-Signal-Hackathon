@@ -6,7 +6,7 @@ import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
 import { ReportGrid } from "./components/report-card";
-import { LostSignalApi, browseReports, saveReport, type Report, type Claim, type RankedReport } from "@/lib/frontend-api";
+import { LostSignalApi, browseReports, saveReport, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewReport } from "@/lib/reports/validation";
 import { validateNewClaim } from "@/lib/claims/validation";
 import { validateImage } from "@/lib/reports/images";
@@ -91,6 +91,9 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   const [searchAttributes, setSearchAttributes] = useState({ category: "", color: "", brand: "" });
   const [aiResults, setAiResults] = useState<RankedReport[] | null>(null);
   const [aiError, setAiError] = useState("");
+  const [sourceId, setSourceId] = useState("");
+  const [analysis, setAnalysis] = useState<ReportMatchAnalysis | null>(null);
+  const [reportType, setReportType] = useState<"lost" | "found">("found");
   const [form, setForm] = useState(initialForm);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photo, setPhoto] = useState("");
@@ -147,6 +150,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   const categories = ["All", ...new Set([...postCategories, ...reports.map(r => r.category)])];
   const selected = reports.find(r => r.id === selectedId);
   const myItems = reports.filter(r => r.user_id === user.id);
+  const matchableItems = myItems.filter(r => r.status === "open");
   const myClaim = selected && claims.find(c => c.report_id === selected.id && c.claimant_id === user.id);
   const tab = view === "detail" ? "browse" : view;
 
@@ -183,14 +187,22 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     } catch (err) { if (active.current) setActionError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
+  function startMatching(report: Report) {
+    setSourceId(report.id); setAiError(""); setAiResults(null); setAnalysis(null); setView("ai");
+  }
   async function runAi(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current || !aiText.trim() || loading || loadError) return;
-    pending.current = true; setBusy(true); setAiError(""); setAiResults(null);
+    if (pending.current || (!sourceId && !aiText.trim()) || loading || loadError) return;
+    pending.current = true; setBusy(true); setAiError(""); setAiResults(null); setAnalysis(null);
     try {
       await sessionRequired();
-      const result = await api.matches(aiText.trim(), reports, searchAttributes);
-      if (active.current) setAiResults(result);
+      if (sourceId) {
+        const result = await api.reportMatches(sourceId, reports);
+        if (active.current) { setAiResults(result.matches); setAnalysis(result.analysis); }
+      } else {
+        const result = await api.matches(aiText.trim(), reports, searchAttributes);
+        if (active.current) setAiResults(result);
+      }
     } catch (err) { if (active.current) setAiError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
@@ -211,14 +223,14 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
   function resetForm() {
     photoSelection.current++;
     setPhotoValidating(false);
-    setForm(initialForm); setPhotoFile(null); setPhoto(""); setSavedReport(undefined);
+    setForm(initialForm); setReportType("found"); setPhotoFile(null); setPhoto(""); setSavedReport(undefined);
     setPhotoInput(n => n + 1); setFormError("");
   }
   async function postItem(event: React.FormEvent) {
     event.preventDefault();
     if (posting.current || photoValidating) return;
     const validation = validateNewReport({
-      report_type: "found", title: form.name, description: form.description,
+      report_type: reportType, title: form.name, description: form.description,
       category: form.category, location: form.place,
     });
     if (!validation.data) { setFormError(validation.error); return; }
@@ -283,23 +295,32 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
           </div>)}
         </>}
         {actionError && <p className="err" role="alert">{actionError}</p>}
+        {selected.user_id === user.id && selected.status === "open" && <button className="big" onClick={() => startMatching(selected)}>Find AI matches for this report</button>}
         <button className="btn2" disabled>Messaging is not available yet</button>
       </> : !loading && !loadError && <p className="empty">This report is no longer available.</p>}
     </section>}
 
     {view === "ai" && <section>
       <h2 style={{ fontSize: 20 }}>Find my item</h2>
-      <p className="note">Choose the category and add identifying details to rank open found reports. Scores measure similarity, not ownership. This search does not call Gemini.</p>
-      <form onSubmit={runAi}>
-        <fieldset disabled={busy}>
-        <textarea className="box" required maxLength={2000} value={aiText} onChange={e => { setAiText(e.target.value); setAiResults(null); }} placeholder="Black backpack with a red keychain, lost near the library" aria-label="Describe your lost item" />
-        <label className="field">Item category<select required value={searchAttributes.category} onChange={e => { setSearchAttributes({ ...searchAttributes, category: e.target.value }); setAiResults(null); }}><option value="">Choose a category</option>{categories.filter(c => c !== "All").map(c => <option key={c}>{c}</option>)}</select></label>
-        <label className="field">Color (optional)<input maxLength={100} value={searchAttributes.color} onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
-        <label className="field">Brand (optional)<input maxLength={100} value={searchAttributes.brand} onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
-        <button className="big" disabled={busy || loading || !!loadError}>{busy ? "Finding matches…" : "Find matches"}</button>
-        </fieldset>
-      </form>
+      <p className="note">Choose one of your saved lost or found reports to match it against opposite-type reports in Supabase. Gemini enriches matches when more evidence is needed. Scores indicate similarity, not ownership.</p>
+      <form onSubmit={runAi}><fieldset disabled={busy}>
+        <label className="field">Your report
+          <select value={sourceId} onChange={e => { setSourceId(e.target.value); setAiResults(null); setAnalysis(null); setAiError(""); }}>
+            <option value="">Quick text search (without Gemini)</option>
+            {matchableItems.map(report => <option key={report.id} value={report.id}>{report.report_type === "lost" ? "Lost" : "Found"}: {report.title}</option>)}
+          </select>
+        </label>
+        {!matchableItems.length && <p className="note">Post a lost or found item using + to enable Gemini-enhanced matching.</p>}
+        {!sourceId && <>
+          <textarea className="box" required maxLength={2000} value={aiText} onChange={e => { setAiText(e.target.value); setAiResults(null); }} placeholder="Black backpack with a red keychain, lost near the library" aria-label="Describe your lost item" />
+          <label className="field">Item category<select required value={searchAttributes.category} onChange={e => { setSearchAttributes({ ...searchAttributes, category: e.target.value }); setAiResults(null); }}><option value="">Choose a category</option>{categories.filter(c => c !== "All").map(c => <option key={c}>{c}</option>)}</select></label>
+          <label className="field">Color (optional)<input maxLength={100} value={searchAttributes.color} onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
+          <label className="field">Brand (optional)<input maxLength={100} value={searchAttributes.brand} onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
+        </>}
+        <button className="big" disabled={busy || loading || !!loadError}>{busy ? "Finding matches…" : sourceId ? "Find AI-enhanced matches" : "Quick search"}</button>
+      </fieldset></form>
       {aiError && <p className="err" role="alert">{aiError}</p>}
+      {analysis && <p className="note" role="status">Gemini analysis: {analysis.state.replaceAll("_", " ")} · {analysis.succeeded}/{analysis.attempted} successful calls{analysis.issues.length ? ` · Issues: ${analysis.issues.join(", ")}` : ""}. {analysis.state === "not_needed" ? "Existing evidence was strong enough; Gemini did not need to run." : ""}</p>}
       {aiResults && <><h2>Top matches</h2>
         {!aiResults.length && <p className="empty">No matches yet. Try another description or check back later.</p>}
         {aiResults.map(({ report, score, reasons }) => <button className="match" key={report.id} onClick={() => openItem(report)}>
@@ -309,7 +330,8 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     </section>}
 
     {view === "post" && <form onSubmit={postItem} aria-busy={postBusy}>
-      <h2 style={{ fontSize: 20 }}>Post a found item</h2>
+      <h2 style={{ fontSize: 20 }}>Post a {reportType} item</h2>
+      <fieldset disabled={postBusy || !!savedReport}><legend>What happened?</legend><div className="row"><label><input type="radio" name="reportType" checked={reportType === "lost"} onChange={() => setReportType("lost")} /> Lost an item</label><label><input type="radio" name="reportType" checked={reportType === "found"} onChange={() => setReportType("found")} /> Found an item</label></div></fieldset>
       <p className="note">Photo: JPEG, PNG or WebP, up to 5 MiB. Keep identifying private details out of the public description.</p>
       <label className="snap">
         {photoFile && photo ? (
@@ -320,9 +342,9 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
       </label>
       <fieldset disabled={postBusy || !!savedReport}>
         <label className="field">Item name<input required maxLength={120} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Black backpack" /></label>
-        <label className="field">Description<textarea className="box" required maxLength={3000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Describe the item and where it is being held." /></label>
+        <label className="field">Description<textarea className="box" required maxLength={3000} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={reportType === "lost" ? "Describe what you lost and any identifying features." : "Describe the item and where it is being held."} /></label>
         <label className="field">Category<select value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>{postCategories.map(c => <option key={c}>{c}</option>)}</select></label>
-        <label className="field">Where did you find it?<input required maxLength={200} value={form.place} onChange={e => setForm({ ...form, place: e.target.value })} placeholder="Library, 2nd floor" /></label>
+        <label className="field">{reportType === "lost" ? "Where did you lose it?" : "Where did you find it?"}<input required maxLength={200} value={form.place} onChange={e => setForm({ ...form, place: e.target.value })} placeholder="Library, 2nd floor" /></label>
       </fieldset>
       {formError && <p className="err" role="alert">{formError}</p>}
       <button className="big" disabled={postBusy || photoValidating}>{postBusy ? "Saving…" : photoValidating ? "Checking photo…" : savedReport ? "Retry photo upload" : "Post item"}</button>
@@ -333,8 +355,8 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
 
     {view === "mine" && <section>
       <div className="row"><h2 style={{ fontSize: 20 }}>My items and claims</h2><button className="small" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh</button></div>
-      {!loading && !loadError && !myItems.length && <p className="empty">You have not posted anything yet. Tap + to post a found item.</p>}
-      {myItems.map(item => <button className="match" key={item.id} onClick={() => openItem(item)}><ReportPhoto report={item} className="th" /><div><b>{item.title}</b><div className="sub">{item.location}</div><span className="tag">{item.status}</span></div></button>)}
+      {!loading && !loadError && !myItems.length && <p className="empty">You have not posted anything yet. Tap + to post a lost or found item.</p>}
+      {myItems.map(item => <div key={item.id}><button className="match" onClick={() => openItem(item)}><ReportPhoto report={item} className="th" /><div><b>{item.title}</b><div className="sub">{item.location}</div><span className="tag">{item.report_type} · {item.status}</span></div></button>{item.status === "open" && <button className="small" onClick={() => startMatching(item)}>Find AI matches</button>}</div>)}
       <h2>Your claims</h2>
       {claimsLoading && <p role="status">Loading claims…</p>}
       {claimsError && <p className="err" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></p>}
@@ -350,7 +372,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     <nav aria-label="Main navigation"><div>
       <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>Browse</button>
       <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => setView("ai")}>AI search</button>
-      <button className="plus" aria-label="Post found item" onClick={() => setView("post")}>+</button>
+      <button className="plus" aria-label="Post lost or found item" onClick={() => setView("post")}>+</button>
       <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>My items</button>
       <button className={tab === "chat" ? "on" : ""} aria-current={tab === "chat" ? "page" : undefined} onClick={() => setView("chat")}>Messages</button>
     </div></nav>
