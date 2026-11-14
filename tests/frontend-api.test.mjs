@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LostSignalApi, browseReports, saveReport, toMatchingItem } from "../lib/frontend-api.ts";
+import { LostSignalApi, browseCategories, browseReports, saveReport, toMatchingItem } from "../lib/frontend-api.ts";
 import { findMatches } from "../lib/matching.ts";
 import { validateNewReport } from "../lib/reports/validation.ts";
 import { validateNewClaim } from "../lib/claims/validation.ts";
@@ -174,4 +174,23 @@ test("separate quick search retains weighted POST matching without Gemini", asyn
   const item = toMatchingItem(report(1, { ai_attributes: { color: "Unknown", brand: null, features: ["strap"] } }));
   assert.equal(item.color, undefined); assert.equal(item.brand, undefined);
   assert.deepEqual(item.features, ["strap"]);
+});
+test("matching handles empty results, API errors and unknown result IDs without fake matches", async () => {
+  const empty = new LostSignalApi(async () => json({ success: true, matches: [] }));
+  assert.deepEqual(await empty.matches("bag", [report()]), []);
+  assert.deepEqual(await empty.matches("bag", []), []);
+  const fail = new LostSignalApi(async () => json({ error: "Matching unavailable" }, 503));
+  await assert.rejects(fail.matches("bag", [report()]), { status: 503 });
+  const unexpected = new LostSignalApi(async () => json({ success: true, matches: [{ item: { id: "unknown" }, score: 90, reasons: [] }] }));
+  await assert.rejects(unexpected.matches("bag", [report()]), { status: 502 });
+});
+
+test("category buttons deduplicate different casing, and filtering includes every case", () => {
+  const rows = [
+    report(10, { category: "other" }),
+    report(11, { category: "Other" }),
+  ];
+  assert.deepEqual(browseCategories(rows, ["Bags", "Other"]), ["All", "Bags", "Other"]);
+  assert.equal(browseReports(rows, "Other").length, 2);
+  assert.equal(browseReports(rows, "other").length, 2);
 });

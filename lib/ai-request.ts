@@ -12,7 +12,7 @@ export async function authorizeAnalysis(request: Request): Promise<Response | nu
   if (error || !user) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }
-  const retryAfter = limiter.take(user.id);
+  const retryAfter = limiter.take(user.id, Date.now(), user.is_anonymous ? 2 : 10);
   if (retryAfter) {
     return Response.json({ error: "Too many analysis requests" }, {
       status: 429, headers: { "Retry-After": String(retryAfter), "Cache-Control": "no-store" },

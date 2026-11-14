@@ -69,7 +69,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   }
 
   const geminiAvailable = Boolean(process.env.GEMINI_API_KEY) && process.env.GEMINI_MOCK_MODE !== "true";
-  const retryAfter = geminiAvailable && candidates.length ? limiter.take(user.id) : 0;
+  const retryAfter = geminiAvailable && candidates.length ? limiter.take(user.id, Date.now(), user.is_anonymous ? 2 : 10) : 0;
   if (retryAfter) {
     return Response.json({ error: "Too many matching requests" }, {
       status: 429, headers: { ...noStore, "Retry-After": String(retryAfter) },
