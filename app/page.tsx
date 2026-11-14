@@ -183,7 +183,9 @@ export default function Home() {
     <>
       <main>
         <div className="row">
-          <h1>Campus Finds</h1>
+          <h1 className="brand">
+            <img src="/icon.svg" alt="" width={40} height={40} />
+            LostSignal</h1>
           <button className="tog" onClick={toggleTheme} aria-pressed={dark}>
             Dark mode: {dark ? "on" : "off"}
           </button>

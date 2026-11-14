@@ -60,3 +60,5 @@ select{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px 
 .send{display:flex;gap:8px}
 .send input{flex:1;min-width:0;height:46px;border:1px solid var(--line);border-radius:23px;padding:0 16px;background:var(--card);color:var(--ink);font:inherit}
 .send button{border:0;background:var(--red);color:#fff;border-radius:23px;padding:0 18px;font-weight:600}
+.brand{display:flex;align-items:center;gap:10px}
+.brand img{border-radius:8px}
