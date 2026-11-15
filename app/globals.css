@@ -678,3 +678,31 @@ p { line-height:1.55; }
 .messages-conversation .inbox-badge { color:#fff; font-size:.7rem; }
 .focused-claim { outline:2px solid var(--red); outline-offset:4px; scroll-margin-top:100px; }
 @media(max-width:600px) { .inbox-badge { min-width:1.1rem; height:1.1rem; margin-left:.15rem; font-size:.65rem; } }
+
+
+/* Guided item-return flow */
+.return-journey{margin:12px 0 16px;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--bg)}
+.return-steps{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px;list-style:none;margin:0 0 14px;padding:0}
+.return-steps li{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;line-height:1.35;color:var(--muted)}
+.return-step-number{flex-shrink:0;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;border:1px solid var(--line);font-size:11px}
+.return-steps li.current{color:var(--ink)}
+.return-steps li.current .return-step-number{background:var(--red);border-color:var(--red);color:#fff}
+.return-steps li.done{color:var(--ink)}
+.return-steps li.done .return-step-number{background:var(--tint);border-color:var(--red);color:var(--redtext)}
+.return-guidance{font-size:13px;line-height:1.55;margin:0;color:var(--ink)}
+.return-footnote{margin:10px 0 0;color:var(--muted);font-size:11px;line-height:1.4}
+.return-journey-compact{padding:10px;margin:10px 0}
+.return-journey-compact .return-steps{grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.return-journey-compact .return-steps li{font-size:10px;flex-direction:column;align-items:flex-start}
+.return-journey-compact .return-guidance{font-size:12px}
+.claim-proof{padding:10px 0}
+.claim-proof strong{font-size:12px}
+.claim-proof p{margin:5px 0 0;overflow-wrap:anywhere}
+.claim-panel .button{margin:6px 6px 6px 0}
+.activity-karma-footer{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);max-width:800px}
+.activity-karma-footer .karma-panel{margin:0}
+@media(max-width:680px){
+ .return-steps{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .return-journey-compact .return-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .activity-karma-footer{margin-top:24px}
+}
