@@ -124,3 +124,31 @@ test("analysis is capped at four reports even with many candidates", async () =>
   assert.equal(calls, 4);
   assert.equal(result.analysis.attempted, 4);
 });
+
+
+test("saved-report matching uses explicit item dates and item names", () => {
+  const row = { ...lost, item_date: "2026-11-14T10:30:00Z", title: "Black Sony headphones" };
+  const item = reportToItem(row);
+  assert.equal(item.itemDate, row.item_date);
+  assert.equal(item.title, row.title);
+});
+
+test("Gemini enriches sparse exact-title matches instead of silently skipping", async () => {
+  const source = { ...lost, category: "Bags", title: "SpongeBob scooter",
+    description: "SpongeBob scooter" };
+  const candidate = { ...found, category: "Bags", title: "SpongeBob scooter",
+    description: "SpongeBob scooter", image_path: null };
+  let calls = 0;
+  const result = await matchReports(source, [candidate], {
+    geminiAvailable: true,
+    loadImage: async () => null,
+    analyzeText: async () => {
+      calls++;
+      return { category: "Bags", color: "Yellow", brand: null, features: ["SpongeBob"] };
+    },
+    analyzeImage: async () => { throw new Error("unexpected image"); },
+  });
+  assert.equal(calls, 2);
+  assert.equal(result.analysis.state, "completed");
+  assert.ok(result.matches[0].score >= 70);
+});
