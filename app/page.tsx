@@ -269,7 +269,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     setCompletedReport(report);
     setNotice(photoUploaded ? "Your report and photo are saved." : "Your report is saved.");
     if (report.report_type === "lost") {
-      setSourceId(report.id); setAiResults(null); setAnalysis(null); setAiError(""); setView("ai");
+      setAiMode("report"); setSourceId(report.id); setAiResults(null); setAnalysis(null); setAiError(""); setView("ai");
     } else setView("mine");
     void loadReports();
   }
@@ -313,6 +313,10 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
   }
   async function decide(claim: Claim, status: "approved" | "rejected") {
     if (guest || pending.current) return;
+    const decision = status === "approved"
+      ? "Approve this ownership request? The item will be reserved for this claimant. You will still need to arrange the handoff; Karma is awarded only after they confirm receipt."
+      : "Decline this ownership request? The claimant will be notified and this decision cannot be undone.";
+    if (!window.confirm(decision)) return;
     pending.current = true; setBusy(true); setActionError(""); setNotice("");
     try {
       await sessionRequired();
@@ -388,17 +392,17 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
           {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
           {myClaim ? <div id={`claim-${myClaim.id}`} className={"info claim-panel" + (focusedClaim === myClaim.id ? " focused-claim" : "")} role="status"><span className="eyebrow">Your ownership request</span><h2>{myClaim.handoff_confirmed_at ? "Return complete" : myClaim.status === "approved" ? "You're approved" : myClaim.status === "pending" ? "Request sent" : "Request declined"}</h2><ReturnJourney claim={myClaim} perspective="claimant" />{!guest && myClaim.status !== "rejected" && !myClaim.handoff_confirmed_at && <button className="button button-primary" type="button" onClick={() => openMessages(myClaim.id)}>{myClaim.status === "pending" ? "Message finder" : "Arrange pickup →"}</button>}{!guest && myClaim.status === "approved" && !myClaim.handoff_confirmed_at && <button className="button button-secondary" type="button" disabled={busy} onClick={() => void confirmHandoff(myClaim)}>Confirm receipt</button>}</div> :
             selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <div className="info claim-panel"><h2>Is this yours?</h2><p>Sign in or create an account to send private proof to the finder and request a claim.</p></div> : <form className="info claim-panel" onSubmit={claim}>
-              <span className="eyebrow">Ownership request</span><h2>Is this yours?</h2><p className="claim-form-intro">Share a detail only the owner would know. The finder will review it privately.</p>
+              <span className="eyebrow">Ownership request</span><h2>Is this yours?</h2><p className="claim-form-intro">Share a private detail only you would know. The finder will review it and you can message them after submitting.</p>
               <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe a unique mark, contents, or another private detail" /></label>
               <button className="button button-primary submit-button" disabled={busy || claimsLoading || !!claimsError}>{busy ? "Submitting…" : "Send ownership request →"}</button>
             </form>)}
           {selected.user_id === user.id && selected.report_type === "found" && <div className="info claim-panel"><div className="claim-panel-heading"><div><span className="eyebrow">Your found item</span><h2>Ownership requests</h2></div><span className="claim-count">{claims.filter(c => c.report_id === selected.id && c.status === "pending").length} pending</span></div>
             {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No requests yet. We’ll notify you when someone claims this item.</p>}
-            {claims.filter(c => c.report_id === selected.id).map(c => <div id={`claim-${c.id}`} className={"claim-request" + (focusedClaim === c.id ? " focused-claim" : "")} key={c.id}><ReturnJourney claim={c} perspective="finder" compact /><details className="claim-proof"><summary>View private ownership proof</summary><p>{c.proof}</p></details>{!guest && c.status !== "rejected" && <button className={c.status === "approved" && !c.handoff_confirmed_at ? "button button-primary" : "button button-secondary"} onClick={() => openMessages(c.id)}>{c.status === "approved" && !c.handoff_confirmed_at ? "Arrange pickup →" : "Message claimant"}</button>}
+            {claims.filter(c => c.report_id === selected.id).map(c => <div id={`claim-${c.id}`} className={"claim-request" + (focusedClaim === c.id ? " focused-claim" : "")} key={c.id}><ReturnJourney claim={c} perspective="finder" compact /><details className="claim-proof" open={c.status === "pending"}><summary>Proof from claimant · {new Date(c.created_at).toLocaleDateString()}</summary><p>{c.proof}</p></details>{!guest && c.status !== "rejected" && <button className={c.status === "approved" && !c.handoff_confirmed_at ? "button button-primary" : "button button-secondary"} onClick={() => openMessages(c.id)}>{c.status === "approved" && !c.handoff_confirmed_at ? "Arrange pickup →" : "Message claimant"}</button>}
               {!guest && c.status === "pending" && selected.status === "open" && <div className="claim-actions"><button className="button button-primary" disabled={busy} onClick={() => void decide(c, "approved")}>Approve ownership</button><button className="button button-secondary" disabled={busy} onClick={() => void decide(c, "rejected")}>Decline</button></div>}
             </div>)}</div>}
           {actionError && <p className="err" role="alert">{actionError}</p>}
-          {selected.user_id === user.id && selected.status === "open" && <button className="button button-secondary submit-button" onClick={() => startMatching(selected)}>Find matches for this report →</button>}
+          {selected.user_id === user.id && selected.status === "open" && !claims.some(c => c.report_id === selected.id && c.status === "pending") && <button className="button button-secondary submit-button" onClick={() => startMatching(selected)}>Find matches for this report →</button>}
         </aside>
       </div> : !loading && !loadError && <div className="state-card">This report is no longer available.</div>}
     </section>}
@@ -483,11 +487,13 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       </div>
     </section>}
 
-    {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
+    {view === "post" && guest && <section className="state-card demo-signin-gate" role="region" aria-label="Sign in to report an item"><h2>Ready to report an item?</h2><p>Create a free account or sign in to share a lost or found report with the UMass community.</p><button type="button" className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in or create an account →</button><button type="button" className="button button-secondary" onClick={() => setView("browse")}>Keep browsing</button></section>}
+    {view === "post" && !guest && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
 
     {view === "edit" && selected && selected.user_id === user.id && !guest && <ReportEditor key={selected.id} report={selected} onBack={() => setView("mine")} onChanged={() => void loadReports()} onDone={message => { setNotice(message); setView("mine"); void loadReports(); }} />}
 
-    {view === "mine" && <section className="activity-page">
+    {view === "mine" && guest && <section className="state-card demo-signin-gate"><h2>Track your items</h2><p>Sign in to see your posted reports, ownership requests and completed returns.</p><button className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in →</button></section>}
+    {view === "mine" && !guest && <section className="activity-page">
       {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
       <div className="page-heading activity-heading"><div><span className="eyebrow">Your corner</span><h1>My activity</h1><p>Everything you’ve reported or claimed, all in one place.</p></div><button className="button button-secondary" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh activity</button></div>
       {!claimsLoading && !claimsError && (claims.some(c => c.status === "pending" && myItems.some(r => r.id === c.report_id && r.report_type === "found")) || claims.some(c => c.claimant_id === user.id && c.status === "approved" && !c.handoff_confirmed_at)) && <div className="activity-next-actions" aria-label="Items needing action">
@@ -509,7 +515,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       </section>
     </section>}
 
-    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
+    {view === "messages" && (guest ? <div className="state-card demo-signin-gate"><h2>Message a finder or claimant</h2><p>Sign in to coordinate a safe item return.</p><button className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in →</button></div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
   <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("browse"); }}>
