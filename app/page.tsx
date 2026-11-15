@@ -90,6 +90,8 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState("");
+  const deepLinkHandled = useRef(false);
   const [selectedMessageClaim, setSelectedMessageClaim] = useState<string | null>(null);
   const [proof, setProof] = useState("");
   const [notice, setNotice] = useState("");
@@ -143,6 +145,39 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
     return () => { active.current = false; controller.abort(); clearTimeout(timer); };
   }, []);
 
+  // A shareable URL uses ?report=<uuid>. Resolve only after report loading.
+  useEffect(() => {
+    if (loading || loadError || deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    const target = new URLSearchParams(window.location.search).get("report");
+    if (!target) return;
+    const report = reports.find(item => item.id === target);
+    if (report) {
+      setSelectedId(report.id);
+      setView("detail");
+    } else {
+      setNotice("This report is unavailable or is no longer accessible.");
+    }
+  }, [loading, loadError, reports]);
+  function clearSharedReportUrl() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("report")) {
+      url.searchParams.delete("report");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }
+  async function shareReport(reportId: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("report", reportId);
+    const link = url.toString();
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareNotice("Link copied! You can share it with other students.");
+    } catch {
+      window.prompt("Copy the report link:", link);
+      setShareNotice("Copy this link to share the report.");
+    }
+  }
   const filtered = browseReports(reports, category, query);
   const categories = browseCategories(reports, postCategories);
   const selected = reports.find(r => r.id === selectedId);
@@ -152,10 +187,12 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   const tab = view === "detail" ? "browse" : view;
 
   function openMessages(claimId?: string) {
+    clearSharedReportUrl();
     setSelectedMessageClaim(claimId ?? null);
     setView("messages");
   }
   function startPost(type: "lost" | "found") {
+    clearSharedReportUrl();
     setReportType(type); setFormKey(key => key + 1); setCompletedReport(null); setNotice(""); setView("post");
   }
   function reportSaved(report: Report, photoUploaded: boolean) {
@@ -169,6 +206,10 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   }
 
   function openItem(report: Report) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("report", report.id);
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    setShareNotice("");
     setSelectedId(report.id); setProof(""); setActionError(""); setNotice(""); setView("detail");
     void loadClaims();
   }
@@ -247,12 +288,12 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       onQuery={setQuery} onCategory={setCategory} onMode={setBrowseMode} onOpen={openItem} onLost={() => startPost("lost")} onFound={() => startPost("found")} onMatches={() => setView("ai")} onRetry={() => void loadReports()} />}
 
     {view === "detail" && <section className="detail-page">
-      <button className="back" onClick={() => setView("browse")}>← Back to browse</button>
+      <button className="back" onClick={() => { clearSharedReportUrl(); setView("browse"); }}>← Back to browse</button>
       {selected ? <div className="detail-layout">
         <div className="detail-main">
           <ReportPhoto key={selected.id} report={selected} className="detail-photo" />
           <div className="detail-copy"><div className="tags"><span className="tag">{selected.report_type === "lost" ? "Lost" : "Found"}</span><span className="tag tag-neutral">{selected.category}</span><span className="tag tag-neutral">{selected.status}</span></div>
-            <h1>{selected.title}</h1><p className="detail-description">{selected.description}</p></div>
+            <h1>{selected.title}</h1><p className="detail-description">{selected.description}</p><div className="report-share"><button type="button" className="button button-secondary" onClick={() => void shareReport(selected.id)}>Share item link</button>{shareNotice && <span role="status" className="note">{shareNotice}</span>}</div></div>
         </div>
         <aside className="detail-side">
           <div className="info detail-facts"><h2>Report details</h2><div><span>Location</span><b>{selected.location}</b></div><div><span>Reported</span><b>{new Date(selected.created_at).toLocaleDateString()}</b></div></div>
@@ -326,11 +367,11 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
     {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
-  <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>
+  <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("browse"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
     <span>Explore</span>
   </button>
-  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { setCompletedReport(null); setView("ai"); }}>
+  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setCompletedReport(null); setView("ai"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
     <span>AI search</span>
   </button>
@@ -342,7 +383,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
     </svg>
     <span>Report item</span>
   </button>
-  <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>
+  <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("mine"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /></svg>
     <span>My activity</span>
   </button>
