@@ -94,7 +94,7 @@ test("claim proof, pending/approved/rejected responses and owner decisions follo
   assert.ok(validateNewClaim({ report_id: id(1), proof: "Blue lining" }).data);
   assert.ok(validateNewClaim({ report_id: id(1), proof: " " }).error);
   const api = new LostSignalApi(async (url, init) => {
-    if (init.method === "POST") {
+    if (init.method === "POST" && url === "/api/claims") {
       assert.equal(url, "/api/claims");
       assert.deepEqual(JSON.parse(init.body), { report_id: id(1), proof: "Blue lining" });
       return json({ claim }, 201);
