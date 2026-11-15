@@ -383,7 +383,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       {selected ? <div className="detail-layout">
         <div className="detail-main">
           <ReportPhoto key={selected.id} report={selected} className="detail-photo" />
-          <div className="detail-copy"><div className="tags"><span className="tag">{selected.report_type === "lost" ? "Lost" : "Found"}</span><span className="tag tag-neutral">{selected.category}</span><span className="tag tag-neutral">{selected.status}</span></div>
+          <div className="detail-copy"><div className="tags"><span className="tag">{selected.report_type === "lost" ? "Lost" : "Found"}</span><span className="tag tag-neutral">{selected.category}</span><span className="tag tag-neutral">{selected.status === "resolved" && claims.some(c => c.report_id === selected.id && c.status === "approved" && !c.handoff_confirmed_at) ? "Pickup pending" : selected.status}</span></div>
             <h1>{selected.title}</h1><p className="detail-description">{selected.description}</p><div className="report-share"><button type="button" className="button button-secondary" onClick={() => void shareReport(selected.id)}>Share item link</button>{shareNotice && <span role="status" className="note">{shareNotice}</span>}</div></div>
         </div>
         <aside className="detail-side">
@@ -503,7 +503,32 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       </div>}
       <div className="activity-layout"><section><div className="results-heading"><h2>My reports</h2><span>{myItems.length}</span></div>
         {!loading && !loadError && !myItems.length && <div className="state-card"><b>No reports yet</b><p>{guest ? "Sign in to post an item and track it here." : "Start with a lost or found report. Your updates will appear here."}</p>{!guest && <button className="button button-primary" onClick={() => startPost("lost")}>Report an item</button>}</div>}
-        {myItems.map(item => { const activeClaim = claims.some(c => c.report_id === item.id && (c.status === "pending" || c.status === "approved")); const anyClaim = claims.some(c => c.report_id === item.id); return <article className="activity-card" key={item.id}><ReportPhoto report={item} className="activity-photo" /><div><div className="tags"><span className="tag">{item.report_type}</span><span className="tag tag-neutral">{item.status}</span></div><h3>{item.title}</h3><p>{item.location}</p><div className="activity-actions"><button className="text-action" onClick={() => openItem(item)}>View report →</button>{item.status === "open" && <button className="text-action" onClick={() => startMatching(item)}>Find matches →</button>}{!guest && <><button className="text-action" disabled={item.status !== "open" || activeClaim || claimsLoading || !!claimsError} onClick={() => { setSelectedId(item.id); setView("edit"); }}>Edit</button><button className="text-action danger-action" disabled={anyClaim || claimsLoading || !!claimsError || busy} onClick={() => void deleteOwnReport(item)}>Delete</button></>}</div>{activeClaim && <span className="field-hint">This report has an active claim; editing is paused.</span>}{anyClaim && <span className="field-hint">Reports with claims cannot be deleted.</span>}{item.report_type === "found" && claims.some(c => c.report_id === item.id && c.status === "pending") && <span className="activity-notification">Pending claim to review</span>}</div></article>; })}
+        {myItems.map(item => {
+          const pendingClaims = claims.filter(c => c.report_id === item.id && c.status === "pending");
+          const approvedClaim = claims.find(c => c.report_id === item.id && c.status === "approved");
+          const hasClaims = claims.some(c => c.report_id === item.id);
+          const isFinished = item.status === "resolved" && (!approvedClaim || !!approvedClaim.handoff_confirmed_at);
+          const pendingPickup = item.status === "resolved" && approvedClaim && !approvedClaim.handoff_confirmed_at;
+          const statusText = pendingPickup ? "Pickup pending" : isFinished ? "Returned / closed" : item.status;
+          return <article className="activity-card" key={item.id}>
+            <ReportPhoto report={item} className="activity-photo" />
+            <div>
+              <div className="tags"><span className="tag">{item.report_type}</span><span className="tag tag-neutral">{statusText}</span></div>
+              <h3>{item.title}</h3><p>{item.location}</p>
+              {pendingClaims.length > 0 && item.report_type === "found" && item.status === "open"
+                ? <div className="activity-card-priority"><b>{pendingClaims.length} ownership {pendingClaims.length === 1 ? "request" : "requests"} waiting</b><button className="button button-primary" onClick={() => openItem(item)}>Review claim →</button></div>
+                : <div className="activity-actions">
+                  <button className="text-action" onClick={() => openItem(item)}>View report →</button>
+                  {item.status === "open" && !hasClaims && <button className="text-action" onClick={() => startMatching(item)}>Find matches →</button>}
+                  {!guest && item.status === "open" && !hasClaims && !claimsLoading && !claimsError && <>
+                    <button className="text-action" onClick={() => { setSelectedId(item.id); setView("edit"); }}>Edit</button>
+                    <button className="text-action danger-action" disabled={busy} onClick={() => void deleteOwnReport(item)}>Delete</button>
+                  </>}
+                </div>}
+              {pendingPickup && <p className="activity-card-note">Claim approved. Arrange pickup in Messages; the claimant confirms receipt afterward.</p>}
+            </div>
+          </article>;
+        })}
       </section><section><div className="results-heading"><h2>My claims</h2><span>{claims.filter(c => c.claimant_id === user.id).length}</span></div>
         {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
         {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
