@@ -123,3 +123,17 @@ test("distinctive matching title works without category or Gemini extraction", (
   assert.equal(scoreMatch({ ...source, title: "Keys", description: "Keys" },
     { ...candidate, title: "Keys", description: "Keys" }).score, 32);
 });
+
+test("distinctive exact names can overcome category selection mistakes", () => {
+  const source = { id: "lost", reportType: "lost", status: "open",
+    title: "SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Transportation" };
+  const candidate = { id: "found", reportType: "found", status: "open",
+    title: "Found SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Other" };
+  const result = scoreMatch(source, candidate);
+  assert.equal(result.score, 60);
+  assert.ok(result.reasons.some(r => r.includes("Different report categories")));
+  // A generic title cannot override a clear category mismatch.
+  assert.equal(scoreMatch({ ...source, title: "Keys" }, { ...candidate, title: "Keys" }).score, 0);
+});
