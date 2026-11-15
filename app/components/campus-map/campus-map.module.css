@@ -1,4 +1,4 @@
-.mapExperience{position:relative;width:min(1440px,calc(100vw - 32px));left:50%;transform:translateX(-50%);margin:12px 0 0;color:var(--ink)}
+.mapExperience{position:relative;width:100%;margin:12px 0 0;color:var(--ink)}
 .mapStage{height:clamp(520px,calc(100dvh - 230px),1000px);min-height:520px;position:relative;overflow:hidden;border:1px solid var(--line);border-radius:24px;background:#e8e4dc;box-shadow:0 16px 42px #00000018}
 .browseMap,.pickerMap{width:100%;height:100%;z-index:0}
 .reportPin,.pickerPin{display:flex;align-items:center;justify-content:center;width:42px;height:42px;border-radius:50% 50% 50% 5px;transform:rotate(-45deg);background:#b90e2b;border:3px solid #fff;box-shadow:0 5px 15px #0005;color:#fff;font-weight:800;font:800 15px system-ui;transition:transform .2s,background .2s,box-shadow .2s}
@@ -51,7 +51,7 @@
 .confirmPanel{margin:10px;padding:15px;border-radius:16px;background:var(--tint);color:var(--ink)}
 .confirmPanel h4{margin:4px 0 14px;font-size:17px;overflow-wrap:anywhere}.confirmButton{width:100%;height:44px;margin-top:12px}.pickerHint{color:var(--muted);font-size:12px;margin:8px 0 0}
 @media(max-width:700px){
-  .mapExperience{width:calc(100vw - 16px)}
+  .mapExperience{width:100%}
   .mapStage{height:calc(100dvh - 215px);min-height:510px;border-radius:18px}
   .mapTop{top:12px;left:12px;right:58px}
   .filterRow{width:calc(100vw - 40px)}
@@ -62,7 +62,5 @@
   .pickerMapWrap{height:50dvh;min-height:350px}
 }
 @media(prefers-reduced-motion:reduce){.bottomSheet,.reportPin,.pickerPin{transition:none}}
-
-.browseHeading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px}.browseHeading h2{margin:0}.viewToggle{display:flex;gap:2px;padding:3px;border:1px solid var(--line);border-radius:22px;background:var(--card);box-shadow:0 2px 10px #0001}.viewToggle button{border:0;background:transparent;color:var(--muted);border-radius:18px;min-width:88px;min-height:36px;padding:0 13px;font-size:13px;font-weight:700}.viewToggle button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
 
 .noLocationCard{position:absolute;z-index:490;left:16px;bottom:64px;display:grid;gap:3px;width:min(330px,calc(100% - 32px));padding:14px 40px 14px 16px;border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:0 6px 25px #0003;font-size:13px}.noLocationCard span{color:var(--muted)}.noLocationCard button{position:absolute;right:10px;top:10px;border:0;background:transparent;font-size:20px}
