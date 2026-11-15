@@ -107,7 +107,7 @@ export function NotificationBell({ onOpen, onOpenMessage }: {
             <p>{alert.item.found_report.title} was reported at {alert.item.found_report.location}.</p>
           </> : alert.item.kind === "claim" ? <>
             <b>New ownership request</b>
-            <p>Someone claims your {alert.item.report_title}.</p>
+            <p>Someone submitted an ownership claim for {alert.item.report_title}.</p>
           </> : alert.item.kind === "approved" ? <>
             <b>Claim approved</b><p>Your claim for {alert.item.report_title} was approved! Message the finder to arrange pickup.</p>
           </> : alert.item.kind === "rejected" ? <>
