@@ -101,9 +101,23 @@ test("time evidence considers item events instead of report creation", () => {
   assert.ok(close.reasons.includes("Lost and found times are close"));
 
   const contradictory = scoreMatch(source, { ...candidate, itemDate: "2026-11-10T12:00:00Z" });
-  assert.ok(contradictory.score < baseline.score);
+  assert.equal(baseline.score, 100);
+  assert.equal(contradictory.score, 88);
   assert.ok(contradictory.reasons.includes("Found time predates reported loss"));
   assert.equal(scoreMatch({ ...source, itemDate: null }, candidate).score, baseline.score);
+});
+
+test("contradictory times reduce uncapped evidence and never produce negative scores", () => {
+  const source = { id: "lost-time", reportType: "lost", status: "open",
+    description: "", category: "backpack", itemDate: "2026-11-14T15:00:00Z" };
+  const candidate = { ...source, id: "found-time", reportType: "found",
+    itemDate: "2026-11-10T12:00:00Z" };
+  assert.equal(scoreMatch(source, { ...candidate, itemDate: null }).score, 35);
+  assert.equal(scoreMatch(source, candidate).score, 23);
+  assert.equal(scoreMatch(candidate, source).score, 23);
+  assert.equal(scoreMatch(source, { ...candidate, itemDate: "invalid" }).score, 35);
+  const sparse = { ...source, category: undefined, description: "striped" };
+  assert.equal(scoreMatch(sparse, { ...candidate, category: undefined, description: "striped" }).score, 0);
 });
 
 test("a close time is not evidence of identical items on its own", () => {

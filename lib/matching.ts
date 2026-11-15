@@ -24,7 +24,8 @@ function overlap(left: Set<string>, right: Set<string>): number {
 
 /** Base evidence weights: category 35, color 20, brand 20, features 15,
  * description 10. Report-title similarity adds up to 50 for distinctive titles; location up to 10;
- * event-time proximity up to 12. These are capped at 100. The number is a
+ * event-time proximity up to 12. Positive evidence is capped at 100 before
+ * subtracting contradictory-time penalties. The number is a
  * similarity ranking, NEVER an ownership probability. Unknown fields are neutral.
  */
 export function scoreMatch(source: Item, candidate: Item): ItemMatch {
@@ -44,6 +45,7 @@ export function scoreMatch(source: Item, candidate: Item): ItemMatch {
     [...leftTitle].every(token => rightTitle.has(token));
 
   let earned = 0;
+  let timePenalty = 0;
   for (const [field, weight] of [
     ["category", 35], ["color", 20], ["brand", 20],
   ] as const) {
@@ -109,7 +111,7 @@ export function scoreMatch(source: Item, candidate: Item): ItemMatch {
       earned += 4;
       reasons.push("Found within a month of the loss");
     } else if (gapHours < -3) {
-      earned -= 12;
+      timePenalty = 12;
       reasons.push("Found time predates reported loss");
     }
   }
@@ -127,7 +129,7 @@ export function scoreMatch(source: Item, candidate: Item): ItemMatch {
 
   return {
     item: candidate,
-    score: Math.max(0, Math.min(100, Math.round(earned))),
+    score: Math.max(0, Math.min(100, Math.round(earned)) - timePenalty),
     reasons,
   };
 }
