@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Claim, Report } from "@/lib/frontend-api";
 import { canMessageOnClaim, normalizeMessageBody, type ChatMessage } from "@/lib/messages";
@@ -29,24 +29,57 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const threadEnd = useRef<HTMLDivElement>(null);
+  const [previews, setPreviews] = useState<Record<string, { body: string; created_at: string }>>({});
 
-  const selected = conversations.find(row => row.claim.id === selectedId) ?? null;
+  // Derive the default conversation without synchronously setting state in an effect.
+  const activeSelectedId =
+    selectedId && conversations.some(row => row.claim.id === selectedId) ? selectedId
+    : initialClaimId && conversations.some(row => row.claim.id === initialClaimId) ? initialClaimId
+    : conversations[0]?.claim.id ?? null;
+  const selected = conversations.find(row => row.claim.id === activeSelectedId) ?? null;
+
+  useEffect(() => {
+    threadEnd.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [messages, activeSelectedId]);
+
+  useEffect(() => {
+    if (!conversations.length) return;
+    let cancelled = false;
+    const ids = conversations.map(row => row.claim.id);
+    async function refreshPreviews() {
+      const { data, error } = await client.from("messages")
+        .select("claim_id,body,created_at")
+        .in("claim_id", ids)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (cancelled || error) return;
+      const next: Record<string, { body: string; created_at: string }> = {};
+      for (const message of data ?? []) {
+        if (!next[message.claim_id]) next[message.claim_id] = { body: message.body, created_at: message.created_at };
+      }
+      setPreviews(next);
+    }
+    void refreshPreviews();
+    const timer = setInterval(() => { if (!document.hidden) void refreshPreviews(); }, 10000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [client, conversations]);
 
   const loadMessages = useCallback(async (signal?: AbortSignal) => {
-    if (!selectedId || !conversations.some(row => row.claim.id === selectedId)) return;
+    if (!activeSelectedId || !conversations.some(row => row.claim.id === activeSelectedId)) return;
     const { data, error: loadError } = await client.from("messages")
       .select("id,claim_id,sender_id,body,created_at")
-      .eq("claim_id", selectedId)
+      .eq("claim_id", activeSelectedId)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(MAX_DISPLAY_MESSAGES);
     if (signal?.aborted) return;
     if (loadError) throw new Error("Unable to load conversation.");
     setMessages(((data ?? []) as ChatMessage[]).reverse());
-  }, [client, selectedId, conversations]);
+  }, [client, activeSelectedId, conversations]);
 
   useEffect(() => {
-    if (!selectedId || !selected) return;
+    if (!activeSelectedId || !selected) return;
     const abort = new AbortController();
     const refresh = async () => {
       try { await loadMessages(abort.signal); if (!abort.signal.aborted) setError(""); }
@@ -57,7 +90,7 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
     // Poll only while this conversation is open. Realtime can be added later.
     const interval = setInterval(() => { if (!document.hidden) void refresh(); }, 5000);
     return () => { abort.abort(); clearTimeout(start); clearInterval(interval); };
-  }, [selectedId, selected, loadMessages]);
+  }, [activeSelectedId, selected, loadMessages]);
 
   async function send(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,10 +129,12 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
         <h2>Conversations <span>({conversations.length})</span></h2>
         {conversations.map(({ claim, report }) => <button type="button" key={claim.id}
           onClick={() => selectConversation(claim.id)}
-          className={"messages-conversation" + (selectedId === claim.id ? " is-selected" : "")}
-          aria-current={selectedId === claim.id ? "true" : undefined}>
+          className={"messages-conversation" + (activeSelectedId === claim.id ? " is-selected" : "")}
+          aria-current={activeSelectedId === claim.id ? "true" : undefined}>
           <b>{report.title}</b>
           <span>{claim.claimant_id === userId ? "With the finder" : "With a claimant"} · {claim.status}</span>
+          {previews[claim.id] && <span className="messages-preview">{previews[claim.id].body.length > 70 ? previews[claim.id].body.slice(0, 70) + "…" : previews[claim.id].body}</span>}
+          {previews[claim.id] && <time className="messages-preview-time" dateTime={previews[claim.id].created_at}>{new Date(previews[claim.id].created_at).toLocaleString()}</time>}
         </button>)}
       </aside>
       <div className="messages-chat">
@@ -117,6 +152,7 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
               <p>{message.body}</p>
               <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleString()}</time>
             </div>)}
+            <div ref={threadEnd} aria-hidden="true" />
           </div>
           {error && <p className="err" role="alert">{error}</p>}
           <form className="messages-compose" onSubmit={send}>

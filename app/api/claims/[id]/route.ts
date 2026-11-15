@@ -18,7 +18,7 @@ export async function GET(_request: Request, { params }: Context) {
 
   const { data: claim, error } = await supabase
     .from("claims")
-    .select("id,report_id,claimant_id,proof,status,created_at")
+    .select("id,report_id,claimant_id,proof,status,created_at,handoff_confirmed_at")
     .eq("id", id)
     .maybeSingle();
   if (error) {

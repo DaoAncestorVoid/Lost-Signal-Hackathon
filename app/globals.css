@@ -640,3 +640,10 @@ p { line-height:1.55; }
 @keyframes wm-ping{from{opacity:.8;transform:scale(1)}to{opacity:0;transform:scale(2.2)}}
 @keyframes wm-wiggle{25%{transform:rotate(-14deg)}75%{transform:rotate(10deg)}}
 @media (prefers-reduced-motion:reduce){.wm-letter,.wm-glass,.wm-ping,.brand-btn:hover .wm-glass{animation:none}}
+
+/* Quick usability and privacy polish */
+.photo-privacy-tip{font-size:12px;line-height:1.5;color:var(--muted);max-width:440px;margin:8px 0 12px}
+.photo-privacy-tip strong{color:var(--redtext)}
+.report-share{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:16px}
+.messages-preview{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;font-size:12px;color:var(--ink)}
+.messages-preview-time{font-size:10px;color:var(--muted)}
