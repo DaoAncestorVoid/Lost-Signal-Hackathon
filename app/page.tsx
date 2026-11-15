@@ -55,7 +55,7 @@ export default function Home() {
       <div className="brand"><button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse"><Image src="/icon.svg" alt="" width={38} height={38} priority /><span>Lost<span className="brand-accent">Signal</span></span></button></div>
       <div className="header-tools">
         {auth.user && <span className="account-label" title={auth.user.email ?? "Guest session"}>{auth.user.is_anonymous ? "Guest session" : auth.user.email}</span>}
-        <button className="theme-button" onClick={toggleTheme} aria-label={`Switch to ${dark ? "light" : "dark"} mode`} title={`Switch to ${dark ? "light" : "dark"} mode`}>{dark ? "☀" : "☾"}</button>
+        <button type="button" className="dark-toggle" onClick={toggleTheme} aria-pressed={dark}>Dark mode: {dark ? "on" : "off"}</button>
         {auth.user && <button className="button button-quiet signout" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : auth.user.is_anonymous ? "Sign in / Sign up" : "Sign out"}</button>}
       </div>
     </div></header>
@@ -301,10 +301,26 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
     </section>}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
-      <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>Explore</button>
-      <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { setCompletedReport(null); setView("ai"); }}>Find matches</button>
-      <button className={tab === "post" ? "on" : ""} aria-current={tab === "post" ? "page" : undefined} onClick={() => { if (view !== "post") startPost("found"); }}>Report item</button>
-      <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>My activity</button>
-    </div></nav>
+  <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+    <span>Explore</span>
+  </button>
+  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { setCompletedReport(null); setView("ai"); }}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
+    <span>AI search</span>
+  </button>
+  <button className={"nav-post" + (tab === "post" ? " on" : "")} aria-current={tab === "post" ? "page" : undefined} onClick={() => { if (view !== "post") startPost("found"); }}>
+    <svg className="post-icon" viewBox="0 0 32 32" aria-hidden="true">
+      <circle className="p-ring" cx="14" cy="14" r="9" />
+      <line className="p-handle" x1="21" y1="21" x2="28" y2="28" />
+      <path d="M14 10v8M10 14h8" />
+    </svg>
+    <span>Report item</span>
+  </button>
+  <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /></svg>
+    <span>My activity</span>
+  </button>
+</div></nav>
   </>;
 }
