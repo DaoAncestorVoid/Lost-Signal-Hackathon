@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Claim, Report } from "@/lib/frontend-api";
 import { canMessageOnClaim, normalizeMessageBody, type ChatMessage } from "@/lib/messages";
@@ -29,8 +29,43 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
+  const threadEnd = useRef<HTMLDivElement>(null);
+  const [previews, setPreviews] = useState<Record<string, { body: string; created_at: string }>>({});
 
   const selected = conversations.find(row => row.claim.id === selectedId) ?? null;
+  // Choose a conversation as soon as the inbox becomes available.
+  useEffect(() => {
+    if (conversations.length === 0) return;
+    if (selectedId && conversations.some(row => row.claim.id === selectedId)) return;
+    setSelectedId(initialClaimId && conversations.some(row => row.claim.id === initialClaimId)
+      ? initialClaimId : conversations[0].claim.id);
+  }, [conversations, selectedId, initialClaimId]);
+
+  useEffect(() => {
+    threadEnd.current?.scrollIntoView({ behavior: "auto", block: "end" });
+  }, [messages, selectedId]);
+
+  useEffect(() => {
+    if (!conversations.length) return;
+    let cancelled = false;
+    const ids = conversations.map(row => row.claim.id);
+    async function refreshPreviews() {
+      const { data, error } = await client.from("messages")
+        .select("claim_id,body,created_at")
+        .in("claim_id", ids)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (cancelled || error) return;
+      const next: Record<string, { body: string; created_at: string }> = {};
+      for (const message of data ?? []) {
+        if (!next[message.claim_id]) next[message.claim_id] = { body: message.body, created_at: message.created_at };
+      }
+      setPreviews(next);
+    }
+    void refreshPreviews();
+    const timer = setInterval(() => { if (!document.hidden) void refreshPreviews(); }, 10000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, [client, conversations]);
 
   const loadMessages = useCallback(async (signal?: AbortSignal) => {
     if (!selectedId || !conversations.some(row => row.claim.id === selectedId)) return;
@@ -100,6 +135,8 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
           aria-current={selectedId === claim.id ? "true" : undefined}>
           <b>{report.title}</b>
           <span>{claim.claimant_id === userId ? "With the finder" : "With a claimant"} · {claim.status}</span>
+          {previews[claim.id] && <span className="messages-preview">{previews[claim.id].body.length > 70 ? previews[claim.id].body.slice(0, 70) + "…" : previews[claim.id].body}</span>}
+          {previews[claim.id] && <time className="messages-preview-time" dateTime={previews[claim.id].created_at}>{new Date(previews[claim.id].created_at).toLocaleString()}</time>}
         </button>)}
       </aside>
       <div className="messages-chat">
@@ -117,6 +154,7 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
               <p>{message.body}</p>
               <time dateTime={message.created_at}>{new Date(message.created_at).toLocaleString()}</time>
             </div>)}
+            <div ref={threadEnd} aria-hidden="true" />
           </div>
           {error && <p className="err" role="alert">{error}</p>}
           <form className="messages-compose" onSubmit={send}>
