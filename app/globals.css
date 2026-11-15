@@ -76,3 +76,18 @@ fieldset{border:0;padding:0;margin:0;min-width:0}
 .notice{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--tint);color:var(--tinttext);font-size:14px}
 .info p{white-space:pre-wrap;overflow-wrap:anywhere}
 .match>div,.card .t{min-width:0;overflow-wrap:anywhere}
+
+/* Campus Karma is self-contained and can move to the redesigned Profile view. */
+.karma-panel{margin-top:16px;padding:16px;background:var(--card);border:1px solid var(--line);border-radius:18px}
+.karma-panel h2{margin-top:0;font-size:18px}
+.karma-panel .note{line-height:1.5}
+.karma-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:14px 0}
+.karma-stat{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;background:var(--tint);color:var(--tinttext);border-radius:14px;padding:16px 8px;text-align:center}
+.karma-stat strong{font-size:27px}
+.karma-stat span{font-size:12px}
+.karma-badges{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.karma-badge{display:flex;flex-direction:column;align-items:center;gap:5px;border:1px solid var(--line);background:var(--bg);padding:12px 5px;border-radius:12px;text-align:center;opacity:.68}
+.karma-badge.unlocked{opacity:1;border-color:var(--red)}
+.karma-badge>span{font-size:24px}
+.karma-badge strong{font-size:12px}
+.karma-badge small{font-size:10px;color:var(--muted);line-height:1.4}
