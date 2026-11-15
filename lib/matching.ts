@@ -23,7 +23,7 @@ function overlap(left: Set<string>, right: Set<string>): number {
 }
 
 /** Base evidence weights: category 35, color 20, brand 20, features 15,
- * description 10. Report-title similarity adds up to 30; location up to 10;
+ * description 10. Report-title similarity adds up to 50 for distinctive titles; location up to 10;
  * event-time proximity up to 12. These are capped at 100. The number is a
  * similarity ranking, NEVER an ownership probability. Unknown fields are neutral.
  */
@@ -72,12 +72,15 @@ export function scoreMatch(source: Item, candidate: Item): ItemMatch {
   // Titles are especially useful for manually entered reports where AI
   // extraction is missing. Exact matching titles are meaningful even when
   // the two descriptions have different levels of detail.
-  const leftTitle = normalize(source.title ?? "");
-  const rightTitle = normalize(candidate.title ?? "");
-  if (leftTitle && rightTitle) {
-    const similarity = overlap(tokens([leftTitle]), tokens([rightTitle]));
+  const leftTitle = tokens([source.title ?? ""]);
+  const rightTitle = tokens([candidate.title ?? ""]);
+  if (leftTitle.size && rightTitle.size) {
+    const similarity = overlap(leftTitle, rightTitle);
     if (similarity > 0) {
-      earned += 30 * similarity;
+      // A descriptive exact title ("SpongeBob scooter") is stronger than a
+      // generic single word ("keys"). Avoid awarding 50 for generic names.
+      const distinctive = Math.min(leftTitle.size, rightTitle.size) >= 2;
+      earned += (distinctive ? 50 : 22) * similarity;
       reasons.push(similarity === 1 ? "Matching item name" : "Similar item name");
     }
   }
