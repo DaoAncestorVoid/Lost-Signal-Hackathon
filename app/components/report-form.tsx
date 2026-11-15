@@ -40,6 +40,8 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
     queueMicrotask(() => {
       if (!active) return;
       try {
+        // Remove legacy drafts keyed only by report type; they were not account-scoped.
+        sessionStorage.removeItem(`lostsignal-report-draft-v1-${initialType}`);
         const raw = sessionStorage.getItem(storageKey);
         if (raw) {
           const value = JSON.parse(raw);
