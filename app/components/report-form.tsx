@@ -126,21 +126,21 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
   return <section className="report-page report-wizard" aria-labelledby="report-title">
     <button type="button" className="back" onClick={onBack}>← Back to browse</button>
     <div className="page-heading"><span className="eyebrow">Create a {draft.type} report</span><h1 id="report-title">{draft.type === "found" ? "Help it find its owner." : "Let’s find your item."}</h1>
-      <p>Just three short steps. Your details stay here while you move between them.</p></div>
+      <p>Add a few details to help your item reach the right person.</p></div>
     {onTypeChange && <fieldset className="type-choice report-type-choice" disabled={busy || !!savedReport}>
       <legend>Which report do you want to make?</legend>
       <label className={draft.type === "lost" ? "selected" : ""}><input type="radio" name="reportType" checked={draft.type === "lost"} onChange={() => onTypeChange("lost")} /><span><b><span className="type-word">Lost</span> report</b><small>I lost something</small></span></label>
       <label className={draft.type === "found" ? "selected" : ""}><input type="radio" name="reportType" checked={draft.type === "found"} onChange={() => onTypeChange("found")} /><span><b><span className="type-word">Found</span> report</b><small>I found something</small></span></label>
     </fieldset>}
-    <div className="wizard-progress" aria-label={`Step ${step} of 3`}><span>Step {step} of 3</span><div className="wizard-progress-track"><span style={{ width: `${step / 3 * 100}%` }} /></div><span>{step === 1 ? title : step === 2 ? "Where and when?" : "Review and post"}</span></div>
+    <div className="wizard-progress" aria-label={`Step ${step} of 3`}><span>Step {step} of 3</span><div className="wizard-progress-track"><span style={{ width: `${step / 3 * 100}%` }} /></div></div>
     {restored && <p className="notice" role="status">Your report draft was restored. {photoMissing && "Please reselect your photo before posting."}</p>}
     <form className="wizard-card" onSubmit={submit} aria-busy={busy} noValidate>
       {step === 1 && <div className="wizard-step"><span className="eyebrow">The item</span><h2>{title}</h2><p className="wizard-intro">{draft.type === "found" ? "Start with a photo if you have one, then add a few details that help someone recognize it." : "Describe what you remember. A photo can help, but you can post without one."}</p>
         {draft.type === "found" && <PhotoControl photoKey={photoKey} photoFile={photoFile} preview={preview} photoMissing={photoMissing} disabled={busy} onPhoto={selectPhoto} onRemove={removePhoto} />}
         <div className="form-grid"><label className="field">Item name<input maxLength={120} value={draft.name} onChange={event => update("name", event.target.value)} placeholder="Keys, black backpack, UCard…" aria-invalid={!!error && !draft.name.trim()} /></label>
-          <label className="field">Category<select value={draft.category} onChange={event => update("category", event.target.value)}>{categories.map(category => <option key={category}>{category}</option>)}</select></label></div>
+          <label className="field">Category<select required value={draft.category} onChange={event => update("category", event.target.value)}><option value="">Choose a category…</option>{categories.map(category => <option key={category} value={category}>{category}</option>)}</select></label></div>
         <label className="field">Description<textarea className="box" maxLength={3000} value={draft.description} onChange={event => update("description", event.target.value)} placeholder={draft.type === "found" ? "Color, brand, and where the owner can retrieve it" : "Color, brand, unique features, and when you last saw it"} aria-invalid={!!error && !draft.description.trim()} /></label>
-        <p className="field-hint">Category is the current report classification. For found items, keep private proof details out of the public description.</p>
+        <p className="field-hint">Keep private details only the owner would know (like a serial number) out of the public description.</p>
         {draft.type === "lost" && <PhotoControl photoKey={photoKey} photoFile={photoFile} preview={preview} photoMissing={photoMissing} disabled={busy} onPhoto={selectPhoto} onRemove={removePhoto} />}
       </div>}
       {step === 2 && <div className="wizard-step"><span className="eyebrow">The place and time</span><h2>{draft.type === "found" ? "Where and when did you find it?" : "Where and when did you last see it?"}</h2><p className="wizard-intro">Tap a campus pin, search a landmark, or enter a nearby place manually. Confirm your selection in the map panel.</p>

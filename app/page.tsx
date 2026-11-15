@@ -118,7 +118,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
   const reportRequest = useRef(0);
   const claimRequest = useRef(0);
   const [aiText, setAiText] = useState("");
-  const [searchAttributes, setSearchAttributes] = useState({ category: "", color: "", brand: "" });
+  const [searchAttributes, setSearchAttributes] = useState({ category: "", color: "", brand: "", itemDate: "" });
   const [aiResults, setAiResults] = useState<RankedReport[] | null>(null);
   const [aiError, setAiError] = useState("");
   const [sourceId, setSourceId] = useState("");
@@ -269,7 +269,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     setCompletedReport(report);
     setNotice(photoUploaded ? "Your report and photo are saved." : "Your report is saved.");
     if (report.report_type === "lost") {
-      setSourceId(report.id); setAiResults(null); setAnalysis(null); setAiError(""); setView("ai");
+      setAiMode("report"); setSourceId(report.id); setAiResults(null); setAnalysis(null); setAiError(""); setView("ai");
     } else setView("mine");
     void loadReports();
   }
@@ -313,6 +313,10 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
   }
   async function decide(claim: Claim, status: "approved" | "rejected") {
     if (guest || pending.current) return;
+    const decision = status === "approved"
+      ? "Approve this ownership request? The item will be reserved for this claimant. You will still need to arrange the handoff; Karma is awarded only after they confirm receipt."
+      : "Decline this ownership request? The claimant will be notified and this decision cannot be undone.";
+    if (!window.confirm(decision)) return;
     pending.current = true; setBusy(true); setActionError(""); setNotice("");
     try {
       await sessionRequired();
@@ -340,21 +344,25 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     } catch (err) { if (active.current) setActionError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
+  function openMatchFinder() {
+    chooseMatchMode(!guest && matchableItems.length ? "report" : "quick");
+    setView("ai");
+  }
   function startMatching(report: Report) {
-    setSourceId(report.id); setAiError(""); setAiResults(null); setAnalysis(null); setView("ai");
+    setAiMode("report"); setSourceId(report.id); setAiError(""); setAiResults(null); setAnalysis(null); setView("ai");
   }
   async function runAi(event: React.FormEvent) {
     event.preventDefault();
     if (matchMode === "report" && !sourceId) return;
-    if (pending.current || (sourceId ?!matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
+    if (pending.current || (matchMode === "report" ? !matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
     pending.current = true; setBusy(true); setAiError(""); setAiResults(null); setAnalysis(null);
     try {
       await sessionRequired();
-      if (sourceId) {
+      if (matchMode === "report") {
         const result = await api.reportMatches(sourceId, reports);
         if (active.current) { setAiResults(result.matches); setAnalysis(result.analysis); }
       } else {
-        const result = await api.matches(aiText.trim(), reports, searchAttributes);
+        const result = await api.matches(aiText.trim(), reports, { ...searchAttributes, itemDate: searchAttributes.itemDate ? new Date(searchAttributes.itemDate).toISOString() : undefined });
         if (active.current) setAiResults(result);
       }
     } catch (err) { if (active.current) setAiError(errorMessage(err)); }
@@ -368,14 +376,14 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       {loadError && <p className="err" role="alert">{loadError} <button className="small" onClick={() => void loadReports()}>Retry reports</button></p>}
     </>}
     {view === "browse" && <BrowseView reports={filtered} loading={loading} error={loadError} query={query} category={category} categories={categories} mode={browseMode}
-      onQuery={setQuery} onCategory={setCategory} onMode={setBrowseMode} onOpen={openItem} onLost={() => startPost("lost")} onFound={() => startPost("found")} onMatches={() => setView("ai")} onRetry={() => void loadReports()} />}
+      onQuery={setQuery} onCategory={setCategory} onMode={setBrowseMode} onOpen={openItem} onLost={() => startPost("lost")} onFound={() => startPost("found")} onMatches={openMatchFinder} onRetry={() => void loadReports()} />}
 
     {view === "detail" && <section className="detail-page">
       <button className="back" onClick={() => { clearSharedReportUrl(); setView("browse"); }}>← Back to browse</button>
       {selected ? <div className="detail-layout">
         <div className="detail-main">
           <ReportPhoto key={selected.id} report={selected} className="detail-photo" />
-          <div className="detail-copy"><div className="tags"><span className="tag">{selected.report_type === "lost" ? "Lost" : "Found"}</span><span className="tag tag-neutral">{selected.category}</span><span className="tag tag-neutral">{selected.status}</span></div>
+          <div className="detail-copy"><div className="tags"><span className="tag">{selected.report_type === "lost" ? "Lost" : "Found"}</span><span className="tag tag-neutral">{selected.category}</span><span className="tag tag-neutral">{selected.status === "resolved" && claims.some(c => c.report_id === selected.id && c.status === "approved" && !c.handoff_confirmed_at) ? "Pickup pending" : selected.status}</span></div>
             <h1>{selected.title}</h1><p className="detail-description">{selected.description}</p><div className="report-share"><button type="button" className="button button-secondary" onClick={() => void shareReport(selected.id)}>Share item link</button>{shareNotice && <span role="status" className="note">{shareNotice}</span>}</div></div>
         </div>
         <aside className="detail-side">
@@ -384,17 +392,17 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
           {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
           {myClaim ? <div id={`claim-${myClaim.id}`} className={"info claim-panel" + (focusedClaim === myClaim.id ? " focused-claim" : "")} role="status"><span className="eyebrow">Your ownership request</span><h2>{myClaim.handoff_confirmed_at ? "Return complete" : myClaim.status === "approved" ? "You're approved" : myClaim.status === "pending" ? "Request sent" : "Request declined"}</h2><ReturnJourney claim={myClaim} perspective="claimant" />{!guest && myClaim.status !== "rejected" && !myClaim.handoff_confirmed_at && <button className="button button-primary" type="button" onClick={() => openMessages(myClaim.id)}>{myClaim.status === "pending" ? "Message finder" : "Arrange pickup →"}</button>}{!guest && myClaim.status === "approved" && !myClaim.handoff_confirmed_at && <button className="button button-secondary" type="button" disabled={busy} onClick={() => void confirmHandoff(myClaim)}>Confirm receipt</button>}</div> :
             selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <div className="info claim-panel"><h2>Is this yours?</h2><p>Sign in or create an account to send private proof to the finder and request a claim.</p></div> : <form className="info claim-panel" onSubmit={claim}>
-              <span className="eyebrow">Ownership request</span><h2>Is this yours?</h2><p className="claim-form-intro">Share a detail only the owner would know. The finder will review it privately.</p>
+              <span className="eyebrow">Ownership request</span><h2>Is this yours?</h2><p className="claim-form-intro">Share a private detail only you would know. The finder will review it and you can message them after submitting.</p>
               <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe a unique mark, contents, or another private detail" /></label>
               <button className="button button-primary submit-button" disabled={busy || claimsLoading || !!claimsError}>{busy ? "Submitting…" : "Send ownership request →"}</button>
             </form>)}
           {selected.user_id === user.id && selected.report_type === "found" && <div className="info claim-panel"><div className="claim-panel-heading"><div><span className="eyebrow">Your found item</span><h2>Ownership requests</h2></div><span className="claim-count">{claims.filter(c => c.report_id === selected.id && c.status === "pending").length} pending</span></div>
             {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No requests yet. We’ll notify you when someone claims this item.</p>}
-            {claims.filter(c => c.report_id === selected.id).map(c => <div id={`claim-${c.id}`} className={"claim-request" + (focusedClaim === c.id ? " focused-claim" : "")} key={c.id}><ReturnJourney claim={c} perspective="finder" compact /><details className="claim-proof"><summary>View private ownership proof</summary><p>{c.proof}</p></details>{!guest && c.status !== "rejected" && <button className={c.status === "approved" && !c.handoff_confirmed_at ? "button button-primary" : "button button-secondary"} onClick={() => openMessages(c.id)}>{c.status === "approved" && !c.handoff_confirmed_at ? "Arrange pickup →" : "Message claimant"}</button>}
+            {claims.filter(c => c.report_id === selected.id).map(c => <div id={`claim-${c.id}`} className={"claim-request" + (focusedClaim === c.id ? " focused-claim" : "")} key={c.id}><ReturnJourney claim={c} perspective="finder" compact /><details className="claim-proof" open={c.status === "pending"}><summary>Proof from claimant · {new Date(c.created_at).toLocaleDateString()}</summary><p>{c.proof}</p></details>{!guest && c.status !== "rejected" && <button className={c.status === "approved" && !c.handoff_confirmed_at ? "button button-primary" : "button button-secondary"} onClick={() => openMessages(c.id)}>{c.status === "approved" && !c.handoff_confirmed_at ? "Arrange pickup →" : "Message claimant"}</button>}
               {!guest && c.status === "pending" && selected.status === "open" && <div className="claim-actions"><button className="button button-primary" disabled={busy} onClick={() => void decide(c, "approved")}>Approve ownership</button><button className="button button-secondary" disabled={busy} onClick={() => void decide(c, "rejected")}>Decline</button></div>}
             </div>)}</div>}
           {actionError && <p className="err" role="alert">{actionError}</p>}
-          {selected.user_id === user.id && selected.status === "open" && <button className="button button-secondary submit-button" onClick={() => startMatching(selected)}>Find matches for this report →</button>}
+          {selected.user_id === user.id && selected.status === "open" && !claims.some(c => c.report_id === selected.id && c.status === "pending") && <button className="button button-secondary submit-button" onClick={() => startMatching(selected)}>Find matches for this report →</button>}
         </aside>
       </div> : !loading && !loadError && <div className="state-card">This report is no longer available.</div>}
     </section>}
@@ -402,16 +410,16 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     {view === "ai" && <section className="matches-page ai-page">
       <div className="ai-hero">
         <span className="ai-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" /></svg></span>
-        <div><span className="eyebrow">AI Search</span><h1>Find a possible match</h1>
-          <p>{guest ? "See how an existing campus report compares with others. Guest analysis is limited." : "Describe an item, or compare one of your saved reports with open reports from the other side of lost and found."}</p></div>
+        <div><span className="eyebrow">LostSignal · Gemini-assisted</span><h1>Find your match, faster.</h1>
+          <p>{guest ? "Search campus items and try report matching. Gemini analysis is limited for guests." : "Search by description or compare your saved report with Gemini-assisted item analysis, location and the time lost or found."}</p></div>
       </div>
 
       <div className="ai-layout">
         <div className="ai-main">
           <form className="match-search-form ai-card" onSubmit={runAi}><fieldset disabled={busy}>
             <div className="ai-mode" role="radiogroup" aria-label="Search mode">
-              <button type="button" role="radio" aria-checked={matchMode === "quick"} className={matchMode === "quick" ? "on" : ""} onClick={() => chooseMatchMode("quick")}><b>Quick search</b><small>Describe an item</small></button>
-              <button type="button" role="radio" aria-checked={matchMode === "report"} className={matchMode === "report" ? "on" : ""} onClick={() => chooseMatchMode("report")}><b>{guest ? "Demo report" : "Match my report"}</b><small>{guest ? "Limited Gemini analysis" : "Gemini-assisted"}</small></button>
+              <button type="button" role="radio" aria-checked={matchMode === "quick"} className={matchMode === "quick" ? "on" : ""} onClick={() => chooseMatchMode("quick")}><b>Quick search</b><small>Find by keywords · no Gemini</small></button>
+              <button type="button" role="radio" aria-checked={matchMode === "report"} className={matchMode === "report" ? "on" : ""} onClick={() => chooseMatchMode("report")}><b>{guest ? "Try Gemini demo" : "Gemini-assisted matches"}</b><small>{guest ? "Report comparison" : "Compare photos, details and dates"}</small></button>
             </div>
 
             {matchMode === "quick" ? <>
@@ -428,13 +436,14 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
                 <label className="field">Color <span className="sub">(optional)</span><input maxLength={100} value={searchAttributes.color} placeholder="Black" onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
                 <label className="field">Brand <span className="sub">(optional)</span><input maxLength={100} value={searchAttributes.brand} placeholder="JanSport" onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
               </div>
-              <p className="note ai-note">Quick search ranks open found reports by weighted similarity. {guest ? "Pick a demo report for Gemini analysis." : "Save a report to get Gemini analysis."}</p>
+              <label className="field ai-time-field">When did you lose it? <span className="sub">(optional)</span><input type="datetime-local" value={searchAttributes.itemDate} onChange={e => { setSearchAttributes({ ...searchAttributes, itemDate: e.target.value }); setAiResults(null); }} /></label>
+              <p className="note ai-note">Quick search compares item names, descriptions, details, place and time. For Gemini-assisted photo analysis, choose the other mode.</p>
             </> : <>
               {matchableItems.length ? <div className="ai-report-list" role="radiogroup" aria-label={guest ? "Demo report" : "Your report"}>
                 {matchableItems.map(report => <label key={report.id} className={"ai-report" + (sourceId === report.id ? " selected" : "")}>
                   <input type="radio" name="sourceReport" checked={sourceId === report.id} onChange={() => { setSourceId(report.id); clearAiResults(); }} />
                   <span className={"tag" + (report.report_type === "lost" ? "" : " tag-neutral")}>{report.report_type === "lost" ? "Lost" : "Found"}</span>
-                  <span className="ai-report-text"><b>{report.title}</b><small>{report.location} · {new Date(report.created_at).toLocaleDateString()}</small></span>
+                  <span className="ai-report-text"><b>{report.title}</b><small>{report.location} · {report.item_date ? `${report.report_type === "lost" ? "Lost" : "Found"} ${new Date(report.item_date).toLocaleString()}` : `Posted ${new Date(report.created_at).toLocaleDateString()}`}</small></span>
                 </label>)}
               </div> : !loading && !loadError && <div className="ai-empty">
                 <b>{guest ? "No demo reports yet" : "No open reports to match"}</b>
@@ -443,8 +452,9 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
               </div>}
             </>}
 
+            {matchMode === "report" && <div className="gemini-mode-note"><span className="gemini-mode-mark" aria-hidden="true">✦</span><div><b>Gemini-powered detail extraction</b><span>When needed and available, Gemini examines item photos or descriptions. Matching still works if AI is unavailable.</span></div></div>}
             <button className="button button-primary submit-button ai-submit" disabled={busy || loading || !!loadError || (matchMode === "report" && !sourceId)}>
-              {busy ? <><span className="spinner" />Comparing reports…</> : matchMode === "report" ? "Find report matches" : "Search found items"}
+              {busy ? <><span className="spinner" />Comparing reports…</> : matchMode === "report" ? "✦ Find Gemini-assisted matches" : "Search found items"}
             </button>
           </fieldset></form>
 
@@ -468,20 +478,22 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
           <div className="ai-card ai-steps"><h2>How it works</h2>
             <ol>
               <li><b>Describe or pick</b><span>Type what you lost, or choose one of your saved reports.</span></li>
-              <li><b>We compare details</b><span>Category, color, brand, place and description are weighed together.</span></li>
+              <li><b>We compare details</b><span>Item name, color, brand, description, place and time are considered; Gemini fills in missing attributes when needed.</span></li>
               <li><b>Review and claim</b><span>Open a match and send private proof to the finder.</span></li>
             </ol>
           </div>
-          <p className="ai-disclaimer">Similarity scores describe shared details, not proof of ownership.</p>
+          <p className="ai-disclaimer">A match percentage represents shared evidence, not the probability that this is your item. Missing details can lower the ranking; dates are optional.</p>
         </aside>
       </div>
     </section>}
 
-    {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
+    {view === "post" && guest && <section className="state-card demo-signin-gate" role="region" aria-label="Sign in to report an item"><h2>Ready to report an item?</h2><p>Create a free account or sign in to share a lost or found report with the UMass community.</p><button type="button" className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in or create an account →</button><button type="button" className="button button-secondary" onClick={() => setView("browse")}>Keep browsing</button></section>}
+    {view === "post" && !guest && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
 
     {view === "edit" && selected && selected.user_id === user.id && !guest && <ReportEditor key={selected.id} report={selected} onBack={() => setView("mine")} onChanged={() => void loadReports()} onDone={message => { setNotice(message); setView("mine"); void loadReports(); }} />}
 
-    {view === "mine" && <section className="activity-page">
+    {view === "mine" && guest && <section className="state-card demo-signin-gate"><h2>Track your items</h2><p>Sign in to see your posted reports, ownership requests and completed returns.</p><button className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in →</button></section>}
+    {view === "mine" && !guest && <section className="activity-page">
       {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
       <div className="page-heading activity-heading"><div><span className="eyebrow">Your corner</span><h1>My activity</h1><p>Everything you’ve reported or claimed, all in one place.</p></div><button className="button button-secondary" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh activity</button></div>
       {!claimsLoading && !claimsError && (claims.some(c => c.status === "pending" && myItems.some(r => r.id === c.report_id && r.report_type === "found")) || claims.some(c => c.claimant_id === user.id && c.status === "approved" && !c.handoff_confirmed_at)) && <div className="activity-next-actions" aria-label="Items needing action">
@@ -491,7 +503,32 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       </div>}
       <div className="activity-layout"><section><div className="results-heading"><h2>My reports</h2><span>{myItems.length}</span></div>
         {!loading && !loadError && !myItems.length && <div className="state-card"><b>No reports yet</b><p>{guest ? "Sign in to post an item and track it here." : "Start with a lost or found report. Your updates will appear here."}</p>{!guest && <button className="button button-primary" onClick={() => startPost("lost")}>Report an item</button>}</div>}
-        {myItems.map(item => { const activeClaim = claims.some(c => c.report_id === item.id && (c.status === "pending" || c.status === "approved")); const anyClaim = claims.some(c => c.report_id === item.id); return <article className="activity-card" key={item.id}><ReportPhoto report={item} className="activity-photo" /><div><div className="tags"><span className="tag">{item.report_type}</span><span className="tag tag-neutral">{item.status}</span></div><h3>{item.title}</h3><p>{item.location}</p><div className="activity-actions"><button className="text-action" onClick={() => openItem(item)}>View report →</button>{item.status === "open" && <button className="text-action" onClick={() => startMatching(item)}>Find matches →</button>}{!guest && <><button className="text-action" disabled={item.status !== "open" || activeClaim || claimsLoading || !!claimsError} onClick={() => { setSelectedId(item.id); setView("edit"); }}>Edit</button><button className="text-action danger-action" disabled={anyClaim || claimsLoading || !!claimsError || busy} onClick={() => void deleteOwnReport(item)}>Delete</button></>}</div>{activeClaim && <span className="field-hint">This report has an active claim; editing is paused.</span>}{anyClaim && <span className="field-hint">Reports with claims cannot be deleted.</span>}{item.report_type === "found" && claims.some(c => c.report_id === item.id && c.status === "pending") && <span className="activity-notification">Pending claim to review</span>}</div></article>; })}
+        {myItems.map(item => {
+          const pendingClaims = claims.filter(c => c.report_id === item.id && c.status === "pending");
+          const approvedClaim = claims.find(c => c.report_id === item.id && c.status === "approved");
+          const hasClaims = claims.some(c => c.report_id === item.id);
+          const isFinished = item.status === "resolved" && (!approvedClaim || !!approvedClaim.handoff_confirmed_at);
+          const pendingPickup = item.status === "resolved" && approvedClaim && !approvedClaim.handoff_confirmed_at;
+          const statusText = pendingPickup ? "Pickup pending" : isFinished ? "Returned / closed" : item.status;
+          return <article className="activity-card" key={item.id}>
+            <ReportPhoto report={item} className="activity-photo" />
+            <div>
+              <div className="tags"><span className="tag">{item.report_type}</span><span className="tag tag-neutral">{statusText}</span></div>
+              <h3>{item.title}</h3><p>{item.location}</p>
+              {pendingClaims.length > 0 && item.report_type === "found" && item.status === "open"
+                ? <div className="activity-card-priority"><b>{pendingClaims.length} ownership {pendingClaims.length === 1 ? "request" : "requests"} waiting</b><button className="button button-primary" onClick={() => openItem(item)}>Review claim →</button></div>
+                : <div className="activity-actions">
+                  <button className="text-action" onClick={() => openItem(item)}>View report →</button>
+                  {item.status === "open" && !hasClaims && <button className="text-action" onClick={() => startMatching(item)}>Find matches →</button>}
+                  {!guest && item.status === "open" && !hasClaims && !claimsLoading && !claimsError && <>
+                    <button className="text-action" onClick={() => { setSelectedId(item.id); setView("edit"); }}>Edit</button>
+                    <button className="text-action danger-action" disabled={busy} onClick={() => void deleteOwnReport(item)}>Delete</button>
+                  </>}
+                </div>}
+              {pendingPickup && <p className="activity-card-note">Claim approved. Arrange pickup in Messages; the claimant confirms receipt afterward.</p>}
+            </div>
+          </article>;
+        })}
       </section><section><div className="results-heading"><h2>My claims</h2><span>{claims.filter(c => c.claimant_id === user.id).length}</span></div>
         {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
         {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
@@ -503,14 +540,14 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       </section>
     </section>}
 
-    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
+    {view === "messages" && (guest ? <div className="state-card demo-signin-gate"><h2>Message a finder or claimant</h2><p>Sign in to coordinate a safe item return.</p><button className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in →</button></div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} onBrowse={() => { clearSharedReportUrl(); setView("browse"); }} />)}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
   <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("browse"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
     <span>Explore</span>
   </button>
-  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setCompletedReport(null); setView("ai"); }}>
+  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setCompletedReport(null); openMatchFinder(); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
     <span>AI Search</span>
   </button>

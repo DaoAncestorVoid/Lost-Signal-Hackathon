@@ -52,3 +52,24 @@ test("browse UI distinguishes loading, errors and empty reports", () => {
   assert.doesNotMatch(render({ error: "Session expired" }), /No open found reports/);
   assert.match(render({}), /No open found reports/);
 });
+
+
+test("critical demo JSX files parse without syntax errors", () => {
+  for (const path of ["app/page.tsx", "app/components/report-form.tsx", "app/components/messages-view.tsx",
+    "app/components/browse-view.tsx", "app/components/notification-bell.tsx"]) {
+    const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX);
+    assert.deepEqual(source.parseDiagnostics.map(problem => problem.messageText), [], path);
+  }
+});
+
+test("claim review and guest flows expose clear, safe next steps in the UI source", () => {
+  const page = readFileSync("app/page.tsx", "utf8");
+  assert.match(page, /Review claim/);
+  assert.match(page, /Pickup pending/);
+  assert.match(page, /window\.confirm\(decision\)/);
+  assert.match(page, /Ready to report an item\?/);
+  assert.match(page, /Proof from claimant/);
+  const messages = readFileSync("app/components/messages-view.tsx", "utf8");
+  assert.match(messages, /Browse found items/);
+  assert.match(messages, /Tips for a safe handoff/);
+});

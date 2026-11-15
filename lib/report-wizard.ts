@@ -2,7 +2,7 @@ import { validateNewReport, type NewReport } from "./reports/validation";
 
 export type WizardDraft = { type: "lost" | "found"; name: string; category: string; description: string; place: string; itemDate: string };
 export type WizardStep = 1 | 2 | 3;
-export const blankDraft = (type: WizardDraft["type"]): WizardDraft => ({ type, name: "", category: "Bags", description: "", place: "", itemDate: "" });
+export const blankDraft = (type: WizardDraft["type"]): WizardDraft => ({ type, name: "", category: "", description: "", place: "", itemDate: "" });
 export const nextStep = (step: WizardStep): WizardStep => step < 3 ? (step + 1) as WizardStep : 3;
 export const previousStep = (step: WizardStep): WizardStep => step > 1 ? (step - 1) as WizardStep : 1;
 

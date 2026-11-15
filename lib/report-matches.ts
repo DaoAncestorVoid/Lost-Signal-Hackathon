@@ -17,6 +17,7 @@ export const ReportRowSchema = z.object({
   description: z.string(),
   category: z.string(),
   location: z.string(),
+  item_date: z.string().nullable().optional(),
   image_path: z.string().nullable(),
   ai_description: z.string().nullable(),
   ai_attributes: z.unknown(),
@@ -45,6 +46,8 @@ export function reportToItem(report: ReportRow, attributes = storedAttributes(re
     reportType: report.report_type,
     status: report.status === "open" ? "open" : "resolved",
     description,
+    title: report.title,
+    itemDate: report.item_date,
     category: known(report.category) ?? known(attributes?.category),
     color: known(attributes?.color),
     brand: known(attributes?.brand),
@@ -79,7 +82,7 @@ function issueFor(error: unknown): MatchAnalysis["issues"][number] {
   return "provider_unavailable";
 }
 
-/** Uses Gemini only when existing report evidence does not already rank strongly. */
+/** Optionally enrich saved reports with Gemini, even for promising initial matches; baseline similarity always remains available if AI fails. */
 export async function matchReports(source: ReportRow, candidates: ReportRow[], deps: Dependencies) {
   const items = new Map<string, Item>([
     [source.id, reportToItem(source)],
@@ -91,7 +94,7 @@ export async function matchReports(source: ReportRow, candidates: ReportRow[], d
   });
   const baseline = rank();
   const analysis: MatchAnalysis = { state: "not_needed", attempted: 0, succeeded: 0, issues: [] };
-  if (!candidates.length || (baseline[0]?.score ?? 0) >= 60) {
+  if (!candidates.length) {
     return { matches: baseline, analysis };
   }
 

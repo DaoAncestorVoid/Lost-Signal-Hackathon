@@ -78,3 +78,76 @@ test("ranking, threshold, limit and normalization remain deterministic", () => {
   assert.throws(() => findMatches(lost, [], { minScore: 101 }), RangeError);
   assert.throws(() => findMatches(lost, [], { limit: -1 }), RangeError);
 });
+
+
+test("exact item names rank well even when Gemini attributes are absent", () => {
+  const source = { id: "lost-scooter", reportType: "lost", status: "open",
+    title: "Lost SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Bikes" };
+  const candidate = { id: "found-scooter", reportType: "found", status: "open",
+    title: "Found SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Bikes" };
+  const result = scoreMatch(source, candidate);
+  assert.equal(result.score, 95); // 35 category + 10 description + 50 distinctive title
+  assert.ok(result.reasons.includes("Matching item name"));
+});
+
+test("time evidence considers item events instead of report creation", () => {
+  const source = { ...lost, title: "Nike backpack", itemDate: "2026-11-14T15:00:00Z" };
+  const candidate = { ...found, title: "Nike backpack", itemDate: "2026-11-14T20:00:00Z" };
+  const baseline = scoreMatch(source, { ...candidate, itemDate: null });
+  const close = scoreMatch(source, candidate);
+  assert.equal(close.score, Math.min(100, baseline.score + 12));
+  assert.ok(close.reasons.includes("Lost and found times are close"));
+
+  const contradictory = scoreMatch(source, { ...candidate, itemDate: "2026-11-10T12:00:00Z" });
+  assert.equal(baseline.score, 100);
+  assert.equal(contradictory.score, 88);
+  assert.ok(contradictory.reasons.includes("Found time predates reported loss"));
+  assert.equal(scoreMatch({ ...source, itemDate: null }, candidate).score, baseline.score);
+});
+
+test("contradictory times reduce uncapped evidence and never produce negative scores", () => {
+  const source = { id: "lost-time", reportType: "lost", status: "open",
+    description: "", category: "backpack", itemDate: "2026-11-14T15:00:00Z" };
+  const candidate = { ...source, id: "found-time", reportType: "found",
+    itemDate: "2026-11-10T12:00:00Z" };
+  assert.equal(scoreMatch(source, { ...candidate, itemDate: null }).score, 35);
+  assert.equal(scoreMatch(source, candidate).score, 23);
+  assert.equal(scoreMatch(candidate, source).score, 23);
+  assert.equal(scoreMatch(source, { ...candidate, itemDate: "invalid" }).score, 35);
+  const sparse = { ...source, category: undefined, description: "striped" };
+  assert.equal(scoreMatch(sparse, { ...candidate, category: undefined, description: "striped" }).score, 0);
+});
+
+test("a close time is not evidence of identical items on its own", () => {
+  const source = { id: "a", reportType: "lost", status: "open", description: "",
+    itemDate: "2026-11-14T10:00:00Z" };
+  const candidate = { id: "b", reportType: "found", status: "open", description: "",
+    itemDate: "2026-11-14T11:00:00Z" };
+  assert.equal(scoreMatch(source, candidate).score, 0);
+});
+
+test("distinctive matching title works without category or Gemini extraction", () => {
+  const source = { id: "one", reportType: "lost", status: "open",
+    title: "SpongeBob scooter", description: "SpongeBob scooter" };
+  const candidate = { ...source, id: "two", reportType: "found" };
+  assert.equal(scoreMatch(source, candidate).score, 60);
+  // A generic one-word title does not receive the full distinctive-title weight.
+  assert.equal(scoreMatch({ ...source, title: "Keys", description: "Keys" },
+    { ...candidate, title: "Keys", description: "Keys" }).score, 32);
+});
+
+test("distinctive exact names can overcome category selection mistakes", () => {
+  const source = { id: "lost", reportType: "lost", status: "open",
+    title: "SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Transportation" };
+  const candidate = { id: "found", reportType: "found", status: "open",
+    title: "Found SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Other" };
+  const result = scoreMatch(source, candidate);
+  assert.equal(result.score, 60);
+  assert.ok(result.reasons.some(r => r.includes("Different report categories")));
+  // A generic title cannot override a clear category mismatch.
+  assert.equal(scoreMatch({ ...source, title: "Keys" }, { ...candidate, title: "Keys" }).score, 0);
+});

@@ -10,6 +10,8 @@ const ItemSchema = z
     reportType: z.enum(["lost", "found"]),
     status: z.enum(["open", "resolved"]),
     description: z.string().max(2000),
+    title: z.string().max(200).optional(),
+    itemDate: z.string().datetime({ offset: true }).nullable().optional(),
     category: z.string().max(100).optional(),
     color: z.string().max(100).optional(),
     brand: z.string().max(100).optional(),

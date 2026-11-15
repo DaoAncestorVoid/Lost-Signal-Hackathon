@@ -199,3 +199,16 @@ test("category buttons deduplicate different casing, and filtering includes ever
   assert.equal(browseReports(rows, "Other").length, 2);
   assert.equal(browseReports(rows, "other").length, 2);
 });
+
+
+test("quick search sends optional lost time and candidate found times", async () => {
+  const candidate = report(1, { item_date: "2026-11-14T15:00:00Z" });
+  const api = new LostSignalApi(async (_url, init) => {
+    const { source, candidates } = JSON.parse(init.body);
+    assert.equal(source.itemDate, "2026-11-14T12:00:00Z");
+    assert.equal(candidates[0].itemDate, candidate.item_date);
+    assert.equal(candidates[0].title, candidate.title);
+    return json({ success: true, matches: [] });
+  });
+  await api.matches("Black canvas bag", [candidate], { category: "Bags", itemDate: "2026-11-14T12:00:00Z" });
+});

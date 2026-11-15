@@ -16,10 +16,11 @@ type Props = {
   reports: Report[];
   initialClaimId?: string | null;
   onOpenReport: (report: Report) => void;
+  onBrowse: () => void;
 };
 
 
-export function MessagesView({ client, userId, claims, reports, initialClaimId, onOpenReport }: Props) {
+export function MessagesView({ client, userId, claims, reports, initialClaimId, onOpenReport, onBrowse }: Props) {
   const { summaries, messageError, loading: inboxLoading, refresh: refreshInbox, readConversation } = useInbox();
   const previews = useMemo(() => Object.fromEntries(summaries.map(row => [row.claim_id, row])), [summaries]);
   const conversations = useMemo(() => claims.flatMap(claim => {
@@ -120,7 +121,8 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
     {inboxLoading && <p role="status">Loading unread messages...</p>}
     {conversations.length === 0 ? <div className="state-card">
       <b>No conversations yet</b>
-      <p>Submit an ownership claim on a found item, or wait for someone to claim a found item you posted. Messages will appear here.</p>
+      <p>Conversations start when someone submits an ownership request for a found item.</p>
+      <button type="button" className="button button-primary" onClick={onBrowse}>Browse found items →</button>
     </div> : <div className="messages-layout">
       <aside className="messages-list" aria-label="Conversations">
         <h2>Conversations <span>({conversations.length})</span></h2>
@@ -160,7 +162,7 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
               {sending ? "Sending…" : "Send"}
             </button>
           </form>
-          <p className="note">Meet in public places. Do not share passwords or sensitive personal information.</p>
+          <details className="return-explainer pickup-guidance"><summary>Tips for a safe handoff</summary><p>Meet in a busy campus space, such as the Student Union or library lobby. Check the item together, and only confirm receipt once it is physically returned. Never share passwords or sensitive information.</p></details>
         </> : <div className="messages-empty">Choose a conversation to start messaging.</div>}
       </div>
     </div>}

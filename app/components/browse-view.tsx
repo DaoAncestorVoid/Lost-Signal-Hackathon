@@ -40,7 +40,7 @@ export function BrowseView({ reports, loading, error, query, category, categorie
 
     <div className="browse-section-head">
       <div><span className="eyebrow">Explore campus finds</span><h2>Recently found</h2><p>Search reports or explore where items were found.</p></div>
-      <button className="text-action" onClick={onMatches}>Find possible matches <span aria-hidden="true">↗</span></button>
+      <button className="text-action" onClick={onMatches}>✦ Try Gemini-assisted matching <span aria-hidden="true">→</span></button>
     </div>
     <div className="browse-toolbar">
       <label className="search-field"><span className="sr-only">Search found items</span><span aria-hidden="true">⌕</span><input type="search" value={query} onChange={event => onQuery(event.target.value)} placeholder="Search items, places, or details" /></label>
