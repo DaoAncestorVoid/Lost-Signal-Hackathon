@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+
 :root {
   --bg:#f7f7f5; --card:#fff; --ink:#18191b; --muted:#626770; --line:#e1e3e5;
   --red:#b81735; --redtext:#a5132e; --tint:#fff0f2; --tinttext:#851328;
@@ -36,6 +37,8 @@ p { line-height:1.55; }
 .site-header { position:sticky; top:0; z-index:900; height:72px; background:var(--card); border-bottom:1px solid var(--line); }
 .header-inner { max-width:1320px; height:100%; margin:auto; padding:0 32px; display:flex; align-items:center; justify-content:space-between; gap:24px; }
 .brand { display:flex; align-items:center; gap:10px; font-weight:850; font-size:22px; letter-spacing:-.065em; white-space:nowrap; }
+.brand-btn { display:flex; align-items:center; gap:10px; min-height:44px; padding:0; border:0; background:none; color:inherit; font:inherit; letter-spacing:inherit; }
+.brand-btn:hover .brand-accent { text-decoration:underline; text-underline-offset:3px; }
 .brand img { border-radius:9px; }
 .brand-accent { color:var(--redtext); }
 .header-tools { display:flex; align-items:center; gap:12px; min-width:0; }

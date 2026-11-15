@@ -21,6 +21,7 @@ export default function Home() {
   const [dark, setDark] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const [homeSignal, setHomeSignal] = useState(0);
   useEffect(() => {
     // Resolve theme after hydration; CSS supplies the system preference immediately.
     const sync = () => {
@@ -50,7 +51,7 @@ export default function Home() {
   }
   return <>
     <header className="site-header"><div className="header-inner">
-      <div className="brand"><Image src="/icon.svg" alt="" width={38} height={38} priority /><span>Lost<span className="brand-accent">Signal</span></span></div>
+      <div className="brand"><button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse"><Image src="/icon.svg" alt="" width={38} height={38} priority /><span>Lost<span className="brand-accent">Signal</span></span></button></div>
       <div className="header-tools">
         {auth.user && <span className="account-label" title={auth.user.email ?? "Guest session"}>{auth.user.is_anonymous ? "Guest session" : auth.user.email}</span>}
         <button className="theme-button" onClick={toggleTheme} aria-label={`Switch to ${dark ? "light" : "dark"} mode`} title={`Switch to ${dark ? "light" : "dark"} mode`}>{dark ? "☀" : "☾"}</button>
@@ -62,14 +63,19 @@ export default function Home() {
       {logoutError && <p className="err" role="alert">{logoutError}</p>}
       {auth.loading ? <div className="state-card" role="status"><span className="spinner" />Checking your session…</div> : auth.user && auth.client ? <>
         {auth.user.is_anonymous && <p className="guest-notice" role="status">Exploring as a guest. You can browse and try limited matching. Sign in to post an item or submit a claim.</p>}
-        <Workspace key={auth.user.id} user={auth.user} client={auth.client} />
+        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} />
       </> : <div className="auth-layout"><section className="auth-story"><span className="eyebrow">Made for the UMass community</span><h1>Good things find their way back.</h1><p>LostSignal connects people who lost something with the people who found it. Share a report, explore campus finds, and take the next step with confidence.</p><div className="auth-steps"><span>01 &nbsp; Report it</span><span>02 &nbsp; Find a match</span><span>03 &nbsp; Claim it</span></div></section><AuthForm client={auth.client} /></div>}
     </main>
   </>;
 }
 
-function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
+function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseClient; homeSignal: number }) {
   const [view, setView] = useState<View>("browse");
+  const [seenHomeSignal, setSeenHomeSignal] = useState(homeSignal);
+  if (homeSignal !== seenHomeSignal) {
+    setSeenHomeSignal(homeSignal);
+    setView("browse");
+    }
   const [browseMode, setBrowseMode] = useState<"list" | "map">("list");
   const guest = user.is_anonymous === true;
   const [reports, setReports] = useState<Report[]>([]);
