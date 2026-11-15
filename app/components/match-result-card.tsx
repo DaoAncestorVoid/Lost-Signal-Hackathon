@@ -26,6 +26,7 @@ export function MatchResultCard({ match, onOpen }: { match: RankedReport; onOpen
       </div>
       <h3>{report.title}</h3>
       <p className="match-location"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z" /><circle cx="12" cy="9.5" r="2.5" /></svg>{report.location}</p>
+      {report.item_date && <p className="match-event-time">{report.report_type === "found" ? "Found" : "Lost"} {new Date(report.item_date).toLocaleString()}</p>}
       <div className="match-reasons"><b>Why this matched</b>
         {reasons.length ? <ul>{reasons.map(reason => <li key={reason}>{reason}</li>)}</ul> : <p>No explanation was provided for this ranking.</p>}
       </div>
