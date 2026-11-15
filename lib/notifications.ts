@@ -26,6 +26,11 @@ function evidence(report: Report): Item {
 export function potentialNotification(lost: Report, found: Report, recipientId: string): number | null {
   if (lost.report_type !== "lost" || found.report_type !== "found" || lost.status !== "open" || found.status !== "open") return null;
   if (lost.user_id !== recipientId || found.user_id === recipientId || Date.parse(found.created_at) <= Date.parse(lost.created_at)) return null;
+  // Automated push-style suggestions stay conservative when manually selected
+  // categories disagree; users can still explore distinctive matches in search.
+  const lostCategory = known(lost.category)?.toLowerCase();
+  const foundCategory = known(found.category)?.toLowerCase();
+  if (lostCategory && foundCategory && lostCategory !== foundCategory) return null;
   const score = scoreMatch(evidence(lost), evidence(found)).score;
   return score >= MIN_NOTIFICATION_SCORE ? score : null;
 }
