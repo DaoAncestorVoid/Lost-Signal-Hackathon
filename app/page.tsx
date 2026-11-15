@@ -8,6 +8,7 @@ import { ReportPhoto } from "./components/report-photo";
 import { BrowseView } from "./components/browse-view";
 import { ReportForm } from "./components/report-form";
 import { MatchResultCard } from "./components/match-result-card";
+import { KarmaPanel } from "./components/karma-panel";
 import { LostSignalApi, browseCategories, browseReports, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewClaim } from "@/lib/claims/validation";
 
@@ -287,6 +288,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} onBack={() => setView("browse")} onSaved={reportSaved} onReportCreated={() => void loadReports()} />)}
 
     {view === "mine" && <section className="activity-page">
+      <KarmaPanel enabled={!guest} refreshKey={claims.filter(c => c.status === "approved").length} />
       <div className="page-heading activity-heading"><div><span className="eyebrow">Your corner</span><h1>My activity</h1><p>Track your reports, matching, and ownership requests.</p></div><button className="button button-secondary" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh activity</button></div>
       <div className="activity-layout"><section><div className="results-heading"><h2>My reports</h2><span>{myItems.length}</span></div>
         {!loading && !loadError && !myItems.length && <div className="state-card"><b>No reports yet</b><p>{guest ? "Sign in to post an item and track it here." : "Start with a lost or found report. Your updates will appear here."}</p>{!guest && <button className="button button-primary" onClick={() => startPost("lost")}>Report an item</button>}</div>}
