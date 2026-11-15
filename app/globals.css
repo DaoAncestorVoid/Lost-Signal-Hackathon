@@ -503,3 +503,11 @@ p { line-height:1.55; }
   .nav-inner{grid-template-columns:repeat(5,1fr)}
   .app-nav button{font-size:10px}
 }
+
+/* Lost / Found report radio choice at top of report form */
+.report-type-choice{margin:0 0 20px;padding:0;border:0;min-width:0}
+.report-type-choice legend{grid-column:1/-1;padding:0;margin-bottom:10px;font-size:14px;font-weight:800;color:var(--ink)}
+.report-type-choice label{transition:box-shadow .2s,border-color .2s,background .2s}
+.report-type-choice label.selected{box-shadow:0 0 0 3px #ff657e66,0 0 22px 4px #ff657ea6}
+.report-type-choice .type-word{display:inline;transition:color .2s}
+.report-type-choice label.selected .type-word{color:var(--redtext)}

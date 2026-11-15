@@ -307,7 +307,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       </div>}
     </section>}
 
-    {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
+    {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
 
     {view === "mine" && <section className="activity-page">
       <KarmaPanel enabled={!guest} refreshKey={handoffRefresh + claims.filter(c => !!c.handoff_confirmed_at).length} />
