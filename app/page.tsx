@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
@@ -10,6 +9,7 @@ import { ReportForm } from "./components/report-form";
 import { MatchResultCard } from "./components/match-result-card";
 import { KarmaPanel } from "./components/karma-panel";
 import { MessagesView } from "./components/messages-view";
+import { BrandWordmark } from "./components/brand-wordmark";
 import { LostSignalApi, browseCategories, browseReports, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewClaim } from "@/lib/claims/validation";
 
@@ -53,7 +53,7 @@ export default function Home() {
   }
   return <>
     <header className="site-header"><div className="header-inner">
-      <div className="brand"><button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse"><Image src="/icon.svg" alt="" width={38} height={38} priority /><span>Lost<span className="brand-accent">Signal</span></span></button></div>
+      <div className="brand"><button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse"><BrandWordmark /></button></div>
       <div className="header-tools">
         {auth.user && <span className="account-label" title={auth.user.email ?? "Guest session"}>{auth.user.is_anonymous ? "Guest session" : auth.user.email}</span>}
         <button type="button" className="dark-toggle" onClick={toggleTheme} aria-pressed={dark}>Dark mode: {dark ? "on" : "off"}</button>
@@ -104,6 +104,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   const [aiError, setAiError] = useState("");
   const [sourceId, setSourceId] = useState("");
   const [analysis, setAnalysis] = useState<ReportMatchAnalysis | null>(null);
+  const [aiMode, setAiMode] = useState<"quick" | "report">("quick");
   const [reportType, setReportType] = useState<"lost" | "found">("found");
   const [formKey, setFormKey] = useState(0);
   const [completedReport, setCompletedReport] = useState<Report | null>(null);
@@ -149,6 +150,13 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   const matchableItems = guest ? reports.filter(r => r.status === "open").slice(0, 20) : myItems.filter(r => r.status === "open");
   const myClaim = selected && claims.find(c => c.report_id === selected.id && c.claimant_id === user.id);
   const tab = view === "detail" ? "browse" : view;
+  const matchMode = sourceId ? "report" : aiMode;
+
+  function clearAiResults() { setAiResults(null); setAnalysis(null); setAiError(""); }
+  function chooseMatchMode(mode: "quick" | "report") {
+    setAiMode(mode); clearAiResults();
+    setSourceId(mode === "report" ? (sourceId || matchableItems[0]?.id || "") : "");
+  }
 
   function openMessages(claimId?: string) {
     setSelectedMessageClaim(claimId ?? null);
@@ -205,7 +213,8 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   }
   async function runAi(event: React.FormEvent) {
     event.preventDefault();
-    if (pending.current || (sourceId ? !matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
+    if (matchMode === "report" && !sourceId) return;
+    if (pending.current || (sourceId ?!matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
     pending.current = true; setBusy(true); setAiError(""); setAiResults(null); setAnalysis(null);
     try {
       await sessionRequired();
@@ -258,36 +267,82 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       </div> : !loading && !loadError && <div className="state-card">This report is no longer available.</div>}
     </section>}
 
-    {view === "ai" && <section className="matches-page">
-      <div className="page-heading"><span className="eyebrow">Match finder</span><h1>Find a possible match</h1>
-        <p>{guest ? "Explore how an existing campus report compares with other reports. Guest analysis is limited." : "Compare your saved report with open reports from the other side of lost and found."} Similarity scores describe shared details, not proof of ownership.</p></div>
-      <form className="match-search-form" onSubmit={runAi}><fieldset disabled={busy}>
-        <label className="field">{guest ? "Demo report" : "Your report"}
-          <select value={sourceId} onChange={e => { setSourceId(e.target.value); setAiResults(null); setAnalysis(null); setAiError(""); }}>
-            <option value="">Quick text search (weighted ranking only)</option>
-            {matchableItems.map(report => <option key={report.id} value={report.id}>{report.report_type === "lost" ? "Lost" : "Found"}: {report.title}</option>)}
-          </select>
-        </label>
-        {!loading && !loadError && !matchableItems.length && <p className="note">{guest ? "No open reports are available for guest matching yet." : "Create a lost or found report to compare it with campus reports."}</p>}
-        {!sourceId && <>
-          <p className="note">Quick search uses weighted similarity only. {guest ? "Choose an open demo report for limited Gemini analysis." : "Save a report to request Gemini analysis."}</p>
-          <textarea className="box" required maxLength={2000} value={aiText} onChange={e => { setAiText(e.target.value); setAiResults(null); }} placeholder="Black backpack with a red keychain, lost near the library" aria-label="Describe your lost item" />
-          <label className="field">Item category<select required value={searchAttributes.category} onChange={e => { setSearchAttributes({ ...searchAttributes, category: e.target.value }); setAiResults(null); }}><option value="">Choose a category</option>{categories.filter(c => c !== "All").map(c => <option key={c}>{c}</option>)}</select></label>
-          <label className="field">Color (optional)<input maxLength={100} value={searchAttributes.color} onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
-          <label className="field">Brand (optional)<input maxLength={100} value={searchAttributes.brand} onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
-        </>}
-        <button className="button button-primary submit-button" disabled={busy || loading || !!loadError}>{busy ? "Comparing reports…" : sourceId ? "Find report matches" : "Search found items"}</button>
-      </fieldset></form>
-      {busy && <div className="state-card" role="status"><span className="spinner" />{sourceId ? "Comparing saved reports. Gemini analysis may take a moment…" : "Ranking open found reports…"}</div>}
-      {aiError && <p className="err" role="alert">{aiError}</p>}
-      {analysis?.state === "unavailable" && <p className="notice" role="status">Gemini is unavailable. These are fallback similarity rankings from saved report details; AI analysis was not completed.</p>}
-      {analysis?.state === "partial" && <p className="notice" role="status">Gemini analysis was incomplete. These rankings also use saved report details. {analysis.issues.includes("quota") ? "Gemini quota was reached." : analysis.issues.includes("timeout") ? "Gemini timed out." : "Some details could not be analyzed."}</p>}
-      {analysis?.state === "completed" && <p className="notice" role="status">Gemini analysis completed for {analysis.succeeded} report{analysis.succeeded === 1 ? "" : "s"}.</p>}
-      {analysis?.state === "not_needed" && <p className="note" role="status">Ranked using saved report details; Gemini analysis was not needed.</p>}
-      {aiResults && <div className="match-results"><div className="results-heading"><h2>{sourceId ? "Possible report matches" : "Search results"}</h2><span>{aiResults.length} {aiResults.length === 1 ? "result" : "results"}</span></div>
-        {!aiResults.length && <div className="state-card"><b>No matches yet</b><p>Try another description or check again when more reports are posted.</p></div>}
-        {aiResults.map(match => <MatchResultCard key={match.report.id} match={match} onOpen={openItem} />)}
-      </div>}
+    {view === "ai" && <section className="matches-page ai-page">
+      <div className="ai-hero">
+        <span className="ai-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" /></svg></span>
+        <div><span className="eyebrow">AI Search</span><h1>Find a possible match</h1>
+          <p>{guest ? "See how an existing campus report compares with others. Guest analysis is limited." : "Describe an item, or compare one of your saved reports with open reports from the other side of lost and found."}</p></div>
+      </div>
+
+      <div className="ai-layout">
+        <div className="ai-main">
+          <form className="match-search-form ai-card" onSubmit={runAi}><fieldset disabled={busy}>
+            <div className="ai-mode" role="radiogroup" aria-label="Search mode">
+              <button type="button" role="radio" aria-checked={matchMode === "quick"} className={matchMode === "quick" ? "on" : ""} onClick={() => chooseMatchMode("quick")}><b>Quick search</b><small>Describe an item</small></button>
+              <button type="button" role="radio" aria-checked={matchMode === "report"} className={matchMode === "report" ? "on" : ""} onClick={() => chooseMatchMode("report")}><b>{guest ? "Demo report" : "Match my report"}</b><small>{guest ? "Limited Gemini analysis" : "Gemini-assisted"}</small></button>
+            </div>
+
+            {matchMode === "quick" ? <>
+              <label className="ai-search-box">
+                <span className="sr-only">Describe your lost item</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>
+                <textarea required maxLength={2000} value={aiText} onChange={e => { setAiText(e.target.value); setAiResults(null); }} placeholder="Black backpack with a red keychain, lost near the library" />
+              </label>
+              <div className="ai-examples" aria-label="Example searches">
+                {["Black backpack near the library", "AirPods case at the rec center", "UCard at the dining hall"].map(example => <button type="button" key={example} className="cat" onClick={() => { setAiText(example); setAiResults(null); }}>{example}</button>)}
+              </div>
+              <div className="ai-attrs">
+                <label className="field">Category<select required value={searchAttributes.category} onChange={e => { setSearchAttributes({ ...searchAttributes, category: e.target.value }); setAiResults(null); }}><option value="">Choose…</option>{categories.filter(c => c !== "All").map(c => <option key={c}>{c}</option>)}</select></label>
+                <label className="field">Color <span className="sub">(optional)</span><input maxLength={100} value={searchAttributes.color} placeholder="Black" onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
+                <label className="field">Brand <span className="sub">(optional)</span><input maxLength={100} value={searchAttributes.brand} placeholder="JanSport" onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
+              </div>
+              <p className="note ai-note">Quick search ranks open found reports by weighted similarity. {guest ? "Pick a demo report for Gemini analysis." : "Save a report to get Gemini analysis."}</p>
+            </> : <>
+              {matchableItems.length ? <div className="ai-report-list" role="radiogroup" aria-label={guest ? "Demo report" : "Your report"}>
+                {matchableItems.map(report => <label key={report.id} className={"ai-report" + (sourceId === report.id ? " selected" : "")}>
+                  <input type="radio" name="sourceReport" checked={sourceId === report.id} onChange={() => { setSourceId(report.id); clearAiResults(); }} />
+                  <span className={"tag" + (report.report_type === "lost" ? "" : " tag-neutral")}>{report.report_type === "lost" ? "Lost" : "Found"}</span>
+                  <span className="ai-report-text"><b>{report.title}</b><small>{report.location} · {new Date(report.created_at).toLocaleDateString()}</small></span>
+                </label>)}
+              </div> : !loading && !loadError && <div className="ai-empty">
+                <b>{guest ? "No demo reports yet" : "No open reports to match"}</b>
+                <p>{guest ? "No open reports are available for guest matching yet." : "Create a lost or found report, then come back to compare it with campus reports."}</p>
+                {!guest && <button type="button" className="button button-secondary" onClick={() => startPost("lost")}>Create a report →</button>}
+              </div>}
+            </>}
+
+            <button className="button button-primary submit-button ai-submit" disabled={busy || loading || !!loadError || (matchMode === "report" && !sourceId)}>
+              {busy ? <><span className="spinner" />Comparing reports…</> : matchMode === "report" ? "Find report matches" : "Search found items"}
+            </button>
+          </fieldset></form>
+
+          {aiError && <p className="err" role="alert">{aiError}</p>}
+          {analysis?.state === "unavailable" && <p className="notice" role="status">Gemini is unavailable. These are fallback similarity rankings from saved report details; AI analysis was not completed.</p>}
+          {analysis?.state === "partial" && <p className="notice" role="status">Gemini analysis was incomplete. These rankings also use saved report details. {analysis.issues.includes("quota") ? "Gemini quota was reached." : analysis.issues.includes("timeout") ? "Gemini timed out." : "Some details could not be analyzed."}</p>}
+          {analysis?.state === "completed" && <p className="notice" role="status">Gemini analysis completed for {analysis.succeeded} report{analysis.succeeded === 1 ? "" : "s"}.</p>}
+          {analysis?.state === "not_needed" && <p className="note" role="status">Ranked using saved report details; Gemini analysis was not needed.</p>}
+
+          {busy && <div className="match-results" aria-busy="true">
+            <p className="note" role="status">{sourceId ? "Comparing saved reports. Gemini analysis may take a moment…" : "Ranking open found reports…"}</p>
+            {[0, 1].map(i => <div className="match-card skeleton-card" key={i} aria-hidden="true"><div className="skeleton skeleton-photo" /><div className="skeleton-lines"><div className="skeleton" /><div className="skeleton" /><div className="skeleton" /></div></div>)}
+          </div>}
+          {aiResults && !busy && <div className="match-results"><div className="results-heading"><h2>{sourceId ? "Possible report matches" : "Search results"}</h2><span>{aiResults.length} {aiResults.length === 1 ? "result" : "results"}</span></div>
+            {!aiResults.length && <div className="state-card"><b>No matches yet</b><p>Try another description or check again when more reports are posted.</p></div>}
+            {aiResults.map(match => <MatchResultCard key={match.report.id} match={match} onOpen={openItem} />)}
+          </div>}
+        </div>
+
+        <aside className="ai-side">
+          <div className="ai-card ai-steps"><h2>How it works</h2>
+            <ol>
+              <li><b>Describe or pick</b><span>Type what you lost, or choose one of your saved reports.</span></li>
+              <li><b>We compare details</b><span>Category, color, brand, place and description are weighed together.</span></li>
+              <li><b>Review and claim</b><span>Open a match and send private proof to the finder.</span></li>
+            </ol>
+          </div>
+          <p className="ai-disclaimer">Similarity scores describe shared details, not proof of ownership.</p>
+        </aside>
+      </div>
     </section>}
 
     {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
@@ -315,7 +370,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   </button>
   <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { setCompletedReport(null); setView("ai"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
-    <span>AI search</span>
+    <span>AI Search</span>
   </button>
   <button className={"nav-post" + (tab === "post" ? " on" : "")} aria-current={tab === "post" ? "page" : undefined} onClick={() => { if (view !== "post") startPost("found"); }}>
     <svg className="post-icon" viewBox="0 0 32 32" aria-hidden="true">
@@ -323,11 +378,11 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       <line className="p-handle" x1="21" y1="21" x2="28" y2="28" />
       <path d="M14 10v8M10 14h8" />
     </svg>
-    <span>Report item</span>
+    <span>Report Item</span>
   </button>
   <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /></svg>
-    <span>My activity</span>
+    <span>My Activity</span>
   </button>
   <button className={tab === "messages" ? "on" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => openMessages()}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 9.6 9.6 0 0 1-4-.9L3 21l1.7-4a8.5 8.5 0 1 1 16.3-5.5z" /></svg>
