@@ -11,7 +11,7 @@ const report = (n = 1, overrides = {}) => ({
   description: "Black canvas bag", location: "Main Library", category: "Bags",
   created_at: "2026-11-14T12:00:00Z", image_path: null, ai_attributes: {}, ...overrides,
 });
-const claim = { id: id(50), report_id: id(1), claimant_id: id(100), proof: "Blue lining", status: "pending", created_at: "2026-11-14T12:00:00Z" };
+const claim = { id: id(50), report_id: id(1), claimant_id: id(100), proof: "Blue lining", status: "pending", created_at: "2026-11-14T12:00:00Z", handoff_confirmed_at: null };
 const payload = { report_type: "found", title: "Black bag", description: "Black canvas bag", location: "Main Library", category: "Bags" };
 const json = (data, status = 200) => Response.json(data, { status });
 
@@ -104,12 +104,17 @@ test("claim proof, pending/approved/rejected responses and owner decisions follo
       const { status } = JSON.parse(init.body);
       return json({ claim: { ...claim, status } });
     }
+    if (url === `/api/claims/${claim.id}/handoff`) {
+      assert.equal(init.method, "POST");
+      return json({ claim: { ...claim, status: "approved", handoff_confirmed_at: "2026-11-15T06:00:00Z" } });
+    }
     return json({ claims: [claim] });
   });
   assert.equal((await api.submitClaim(id(1), "Blue lining")).status, "pending");
   assert.equal((await api.decideClaim(claim.id, "approved")).status, "approved");
   assert.equal((await api.decideClaim(claim.id, "rejected")).status, "rejected");
   assert.equal((await api.claims()).length, 1);
+  assert.equal((await api.confirmHandoff(claim.id)).handoff_confirmed_at, "2026-11-15T06:00:00Z");
   await assert.rejects(new LostSignalApi(async () => json({ error: "Claim already exists" }, 409)).submitClaim(id(1), "proof"), { status: 409 });
 });
 
