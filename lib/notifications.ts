@@ -12,6 +12,8 @@ function evidence(report: Report): Item {
   return {
     id: report.id, reportType: report.report_type,
     status: report.status === "open" ? "open" : "resolved",
+    title: report.title,
+    itemDate: report.item_date,
     description: `${report.title} ${report.description}`,
     category: known(report.category),
     location: report.location,
