@@ -22,6 +22,7 @@ export type Report = z.infer<typeof ReportSchema>;
 const ClaimSchema = z.object({
   id: z.string().uuid(), report_id: z.string().uuid(), claimant_id: z.string().uuid(),
   proof: z.string(), status: z.enum(["pending", "approved", "rejected"]), created_at: z.string(),
+  handoff_confirmed_at: z.string().nullable(),
 });
 export type Claim = z.infer<typeof ClaimSchema>;
 export type RankedReport = { report: Report; score: number; reasons: string[] };
@@ -91,6 +92,11 @@ export class LostSignalApi {
   async decideClaim(id: string, status: "approved" | "rejected"): Promise<Claim> {
     return (await this.request(`/api/claims/${encodeURIComponent(id)}`, z.object({ claim: ClaimSchema }), {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    })).claim;
+  }
+  async confirmHandoff(claimId: string): Promise<Claim> {
+    return (await this.request(`/api/claims/${encodeURIComponent(claimId)}/handoff`, z.object({ claim: ClaimSchema }), {
+      method: "POST",
     })).claim;
   }
   /** Match a saved report against opposite-type reports in Supabase using optional Gemini enrichment. */

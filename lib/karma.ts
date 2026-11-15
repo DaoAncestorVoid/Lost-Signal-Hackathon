@@ -1,5 +1,5 @@
-/** Approved claims on found reports count toward Karma.
- * Approval alone does not verify a completed physical handoff.
+/** Only recipient-confirmed physical returns count toward Karma.
+ * The approvedClaims field is retained for response compatibility, but now counts confirmed returns.
  */
 export const KARMA_PER_APPROVED_CLAIM = 50;
 
