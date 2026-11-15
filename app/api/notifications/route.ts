@@ -1,3 +1,4 @@
+import { notificationDatabaseError } from "@/lib/notification-errors";
 import { createClient } from "@/lib/supabase/server";
 import { canWriteAsPermanentUser, permanentAccountRequired } from "@/lib/guest-permissions";
 import { ReportSchema } from "@/lib/frontend-api";
@@ -16,7 +17,7 @@ export async function GET() {
   if (current.response) return current.response;
   const { supabase, user } = current;
   const rows = await supabase.from("notifications").select("id,recipient_id,lost_report_id,found_report_id,score,read_at,created_at").eq("recipient_id", user.id).order("created_at", { ascending: false });
-  if (rows.error) return Response.json({ error: "Unable to load notifications" }, { status: 500 });
+  if (rows.error) return notificationDatabaseError("matches", rows.error);
   const ids = [...new Set((rows.data ?? []).flatMap(row => [row.lost_report_id, row.found_report_id]))];
   if (!ids.length) return Response.json({ notifications: [] });
   const reports = await supabase.from("reports").select("*").in("id", ids);
@@ -38,7 +39,7 @@ export async function POST() {
     supabase.from("reports").select("*").eq("report_type", "found").eq("status", "open").neq("user_id", user.id).order("created_at", { ascending: false }).limit(500),
     supabase.from("notifications").select("lost_report_id,found_report_id").eq("recipient_id", user.id),
   ]);
-  if (lostRows.error || foundRows.error || existing.error) return Response.json({ error: "Unable to refresh potential matches" }, { status: 500 });
+  if (lostRows.error || foundRows.error || existing.error) return notificationDatabaseError("match refresh", lostRows.error ?? foundRows.error ?? existing.error!);
   const lost = (lostRows.data ?? []).flatMap(row => { const result = ReportSchema.safeParse(row); return result.success ? [result.data] : []; });
   const found = (foundRows.data ?? []).flatMap(row => { const result = ReportSchema.safeParse(row); return result.success ? [result.data] : []; });
   const known = new Set((existing.data ?? []).map(row => `${row.lost_report_id}:${row.found_report_id}`));

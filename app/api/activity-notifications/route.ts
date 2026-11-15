@@ -1,3 +1,4 @@
+import { notificationDatabaseError } from "@/lib/notification-errors";
 import { createClient } from "@/lib/supabase/server";
 import { canWriteAsPermanentUser, permanentAccountRequired } from "@/lib/guest-permissions";
 
@@ -11,9 +12,10 @@ export async function GET() {
   const result = await supabase.from("activity_notifications")
     .select("id,kind,report_id,claim_id,read_at,created_at")
     .eq("recipient_id", user.id)
+    .neq("kind", "message")
     .order("created_at", { ascending: false })
     .limit(75);
-  if (result.error) return Response.json({ error: "Unable to load activity notifications" }, { status: 500, headers });
+  if (result.error) return notificationDatabaseError("activity", result.error);
 
   const rows = result.data ?? [];
   const reportIds = [...new Set(rows.map(row => row.report_id))];

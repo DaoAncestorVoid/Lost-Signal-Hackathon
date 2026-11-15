@@ -35,6 +35,18 @@ test("activity notification API rejects invalid payloads and unauthorized errors
   );
 });
 
+test("claim decisions and handoff alerts preserve the validated activity contract", async () => {
+  const events = ["approved", "rejected", "handoff"].map((kind, i) => ({
+    id: id(i + 10), kind, claim_id: id(3), report_id: id(4),
+    report_title: "UCard", created_at: new Date().toISOString(), read_at: null,
+  }));
+  const api = new LostSignalApi(async () => Response.json({ notifications: events }));
+  assert.deepEqual(await api.activityNotifications(), events);
+  await assert.rejects(new LostSignalApi(async () => Response.json({ notifications: [
+    { ...events[0], kind: "forged-event" },
+  ] })).activityNotifications(), { status: 502 });
+});
+
 test("activity notifications are inserted by database triggers and readable only by recipient", async () => {
   const sql = await readFile(new URL("../supabase/migrations/20261115070000_claim_message_notifications.sql", import.meta.url), "utf8");
   assert.match(sql, /after insert on public\.claims/);

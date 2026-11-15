@@ -35,7 +35,7 @@ export const NotificationSchema = z.object({
 export type MatchNotification = z.infer<typeof NotificationSchema>;
 export const ActivityNotificationSchema = z.object({
   id: z.string().uuid(),
-  kind: z.enum(["claim", "message"]),
+  kind: z.enum(["claim", "message", "approved", "rejected", "handoff"]),
   report_id: z.string().uuid(),
   claim_id: z.string().uuid(),
   report_title: z.string(),
