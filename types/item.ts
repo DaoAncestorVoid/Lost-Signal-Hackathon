@@ -7,6 +7,10 @@ export interface Item {
   reportType: ReportType;
   status: ResolutionStatus;
   description: string;
+  /** Short report title, when available. */
+  title?: string;
+  /** When the item was lost/found, not when the report was posted. */
+  itemDate?: string | null;
   category?: string;
   color?: string;
   brand?: string;
