@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Lost Signal",
+  title: "LostSignal | UMass Lost & Found",
   description:
-    "Find lost items on campus. Post what you found and search with AI for what you lost.",
+    "Report a lost item, share a campus find, and discover possible matches at UMass Amherst.",
 };
 
 export const viewport: Viewport = {
