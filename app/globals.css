@@ -64,6 +64,7 @@ select{display:block;width:100%;box-sizing:border-box;margin-top:6px;border:1px 
 .send button{border:0;background:var(--red);color:#fff;border-radius:23px;padding:0 18px;font-weight:600}
 .brand{display:flex;align-items:center;gap:10px}
 .brand img{border-radius:8px}
+.brand-btn{display:flex;align-items:center;gap:10px;background:none;border:0;padding:0;font:inherit;color:inherit;min-height:44px}
 
 *,*::before,*::after{box-sizing:border-box}
 button:disabled{opacity:.6;cursor:not-allowed}

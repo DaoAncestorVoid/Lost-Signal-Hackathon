@@ -25,6 +25,7 @@ export default function Home() {
   const [dark, setDark] = useState(false);
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [logoutError, setLogoutError] = useState("");
+  const [homeSignal, setHomeSignal] = useState(0);
   useEffect(() => {
     // Resolve theme after hydration; CSS supplies the system preference immediately.
     const sync = () => {
@@ -56,9 +57,10 @@ export default function Home() {
     <main>
       <div className="row">
         <h1 className="brand">
+          <button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse">
           <Image src="/icon.svg" alt="" width={40} height={40} />
-          LostSignal
-        </h1>
+            LostSignal</button>
+</h1>
         <button className="tog" onClick={toggleTheme} aria-pressed={dark}>Dark mode: {dark ? "on" : "off"}</button>
       </div>
       {auth.error && <p className="err" role="alert">{auth.error}</p>}
@@ -69,14 +71,19 @@ export default function Home() {
           <button className="small" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : auth.user.is_anonymous ? "Sign in / Sign up" : "Sign out"}</button>
         </div>
         {auth.user.is_anonymous && <p className="notice" role="status">You&apos;re exploring as a guest. Browse reports and try limited AI matching. To post items or claim one, choose Sign in / Sign up. Leaving this guest session may remove access to its history.</p>}
-        <Workspace key={auth.user.id} user={auth.user} client={auth.client} />
+        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} />
       </> : <AuthForm client={auth.client} />}
     </main>
   </>;
 }
 
-function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
+function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseClient; homeSignal: number }) {
   const [view, setView] = useState<View>("browse");
+  const [seenHomeSignal, setSeenHomeSignal] = useState(homeSignal);
+  if (homeSignal !== seenHomeSignal) {
+    setSeenHomeSignal(homeSignal);
+    setView("browse");
+    }
   const [browseMode, setBrowseMode] = useState<"list" | "map">("list");
   const guest = user.is_anonymous === true;
   const [reports, setReports] = useState<Report[]>([]);
