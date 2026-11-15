@@ -88,7 +88,7 @@ test("exact item names rank well even when Gemini attributes are absent", () => 
     title: "Found SpongeBob scooter", description: "SpongeBob scooter",
     category: "Bikes" };
   const result = scoreMatch(source, candidate);
-  assert.equal(result.score, 75); // 35 category + 10 description + 30 title
+  assert.equal(result.score, 95); // 35 category + 10 description + 50 distinctive title
   assert.ok(result.reasons.includes("Matching item name"));
 });
 
@@ -112,4 +112,14 @@ test("a close time is not evidence of identical items on its own", () => {
   const candidate = { id: "b", reportType: "found", status: "open", description: "",
     itemDate: "2026-11-14T11:00:00Z" };
   assert.equal(scoreMatch(source, candidate).score, 0);
+});
+
+test("distinctive matching title works without category or Gemini extraction", () => {
+  const source = { id: "one", reportType: "lost", status: "open",
+    title: "SpongeBob scooter", description: "SpongeBob scooter" };
+  const candidate = { ...source, id: "two", reportType: "found" };
+  assert.equal(scoreMatch(source, candidate).score, 60);
+  // A generic one-word title does not receive the full distinctive-title weight.
+  assert.equal(scoreMatch({ ...source, title: "Keys", description: "Keys" },
+    { ...candidate, title: "Keys", description: "Keys" }).score, 32);
 });
