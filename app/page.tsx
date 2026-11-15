@@ -540,7 +540,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       </section>
     </section>}
 
-    {view === "messages" && (guest ? <div className="state-card demo-signin-gate"><h2>Message a finder or claimant</h2><p>Sign in to coordinate a safe item return.</p><button className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in →</button></div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
+    {view === "messages" && (guest ? <div className="state-card demo-signin-gate"><h2>Message a finder or claimant</h2><p>Sign in to coordinate a safe item return.</p><button className="button button-primary" onClick={() => void client.auth.signOut()}>Sign in →</button></div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} onBrowse={() => { clearSharedReportUrl(); setView("browse"); }} />)}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
   <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("browse"); }}>
