@@ -11,11 +11,12 @@ import { ReportEditor } from "./components/report-editor";
 import { NotificationBell } from "./components/notification-bell";
 import { MatchResultCard } from "./components/match-result-card";
 import { KarmaPanel } from "./components/karma-panel";
+import { MessagesView } from "./components/messages-view";
 import { LostSignalApi, browseCategories, browseReports, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewClaim } from "@/lib/claims/validation";
 import { deleteConfirmation } from "@/lib/reports/management";
 
-type View = "browse" | "ai" | "post" | "mine" | "detail" | "edit";
+type View = "browse" | "ai" | "post" | "mine" | "detail" | "edit" | "messages";
 const api = new LostSignalApi();
 const postCategories = ["Bags", "Keys", "IDs", "Tech", "Other"];
 const errorMessage = (err: unknown) => err instanceof Error ? err.message : "The request failed. Please try again.";
@@ -90,9 +91,13 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
   const [claims, setClaims] = useState<Claim[]>([]);
   const [claimsError, setClaimsError] = useState("");
   const [claimsLoading, setClaimsLoading] = useState(true);
+  const [handoffRefresh, setHandoffRefresh] = useState(0);
   const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [shareNotice, setShareNotice] = useState("");
+  const deepLinkHandled = useRef(false);
+  const [selectedMessageClaim, setSelectedMessageClaim] = useState<string | null>(null);
   const [proof, setProof] = useState("");
   const [notice, setNotice] = useState("");
   const [actionError, setActionError] = useState("");
@@ -147,12 +152,53 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
   useEffect(() => {
     if (!notificationReport) return;
     const timer = setTimeout(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("report", notificationReport.id);
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      setShareNotice("");
       setReports(previous => previous.some(report => report.id === notificationReport.id) ? previous : [notificationReport, ...previous]);
       setSelectedId(notificationReport.id); setView("detail"); onNotificationConsumed();
     }, 0);
     return () => clearTimeout(timer);
   }, [notificationReport, onNotificationConsumed]);
 
+  // A shareable URL uses ?report=<uuid>. Resolve only after report loading.
+  useEffect(() => {
+    if (loading || loadError || deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    const target = new URLSearchParams(window.location.search).get("report");
+    if (!target) return;
+    const report = reports.find(item => item.id === target);
+    // URL synchronization runs after the effect, avoiding cascading render updates.
+    const timer = setTimeout(() => {
+      if (report) {
+        setSelectedId(report.id);
+        setView("detail");
+      } else {
+        setNotice("This report is unavailable or is no longer accessible.");
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [loading, loadError, reports]);
+  function clearSharedReportUrl() {
+    const url = new URL(window.location.href);
+    if (url.searchParams.has("report")) {
+      url.searchParams.delete("report");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    }
+  }
+  async function shareReport(reportId: string) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("report", reportId);
+    const link = url.toString();
+    try {
+      await navigator.clipboard.writeText(link);
+      setShareNotice("Link copied! You can share it with other students.");
+    } catch {
+      window.prompt("Copy the report link:", link);
+      setShareNotice("Copy this link to share the report.");
+    }
+  }
   const filtered = browseReports(reports, category, query);
   const categories = browseCategories(reports, postCategories);
   const selected = reports.find(r => r.id === selectedId);
@@ -161,7 +207,13 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
   const myClaim = selected && claims.find(c => c.report_id === selected.id && c.claimant_id === user.id);
   const tab = view === "detail" ? "browse" : view === "edit" ? "mine" : view;
 
+  function openMessages(claimId?: string) {
+    clearSharedReportUrl();
+    setSelectedMessageClaim(claimId ?? null);
+    setView("messages");
+  }
   function startPost(type: "lost" | "found") {
+    clearSharedReportUrl();
     setReportType(type); setFormKey(key => key + 1); setCompletedReport(null); setNotice(""); setView("post");
   }
   function reportSaved(report: Report, photoUploaded: boolean) {
@@ -188,6 +240,10 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
   }
 
   function openItem(report: Report) {
+    const url = new URL(window.location.href);
+    url.searchParams.set("report", report.id);
+    window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+    setShareNotice("");
     setSelectedId(report.id); setProof(""); setActionError(""); setNotice(""); setView("detail");
     void loadClaims();
   }
@@ -217,6 +273,22 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
       setClaims(previous => previous.map(c => c.id === updated.id ? updated : c));
       setNotice("Claim " + updated.status + ".");
       await Promise.all([loadReports(), loadClaims()]);
+    } catch (err) { if (active.current) setActionError(errorMessage(err)); }
+    finally { pending.current = false; if (active.current) setBusy(false); }
+  }
+  async function confirmHandoff(claim: Claim) {
+    if (guest || pending.current || claim.claimant_id !== user.id || claim.status !== "approved" || claim.handoff_confirmed_at) return;
+    const confirmed = window.confirm("Confirm you have physically received this item? This will notify the finder and count as a completed return.");
+    if (!confirmed) return;
+    pending.current = true; setBusy(true); setActionError(""); setNotice("");
+    try {
+      await sessionRequired();
+      const updated = await api.confirmHandoff(claim.id);
+      if (!active.current) return;
+      setClaims(previous => previous.map(c => c.id === updated.id ? updated : c));
+      setNotice("Item return confirmed. Thank you for helping close the loop!");
+      setHandoffRefresh(n => n + 1);
+      await loadClaims();
     } catch (err) { if (active.current) setActionError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
@@ -250,18 +322,18 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
       onQuery={setQuery} onCategory={setCategory} onMode={setBrowseMode} onOpen={openItem} onLost={() => startPost("lost")} onFound={() => startPost("found")} onMatches={() => setView("ai")} onRetry={() => void loadReports()} />}
 
     {view === "detail" && <section className="detail-page">
-      <button className="back" onClick={() => setView("browse")}>← Back to browse</button>
+      <button className="back" onClick={() => { clearSharedReportUrl(); setView("browse"); }}>← Back to browse</button>
       {selected ? <div className="detail-layout">
         <div className="detail-main">
           <ReportPhoto key={selected.id} report={selected} className="detail-photo" />
           <div className="detail-copy"><div className="tags"><span className="tag">{selected.report_type === "lost" ? "Lost" : "Found"}</span><span className="tag tag-neutral">{selected.category}</span><span className="tag tag-neutral">{selected.status}</span></div>
-            <h1>{selected.title}</h1><p className="detail-description">{selected.description}</p></div>
+            <h1>{selected.title}</h1><p className="detail-description">{selected.description}</p><div className="report-share"><button type="button" className="button button-secondary" onClick={() => void shareReport(selected.id)}>Share item link</button>{shareNotice && <span role="status" className="note">{shareNotice}</span>}</div></div>
         </div>
         <aside className="detail-side">
           <div className="info detail-facts"><h2>Report details</h2><div><span>Location</span><b>{selected.location}</b></div><div><span>Reported</span><b>{new Date(selected.created_at).toLocaleDateString()}</b></div></div>
           {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
           {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
-          {myClaim ? <div className="info claim-panel" role="status"><span className="eyebrow">Your claim</span><h2>Status: {myClaim.status}</h2><p>{myClaim.status === "pending" ? "The finder will review the details you provided." : myClaim.status === "approved" ? "The finder approved your claim." : "This claim was not approved."}</p></div> :
+          {myClaim ? <div className="info claim-panel" role="status"><span className="eyebrow">Your claim</span><h2>Status: {myClaim.status}</h2><p>{myClaim.status === "pending" ? "The finder will review the details you provided." : myClaim.status === "approved" ? (myClaim.handoff_confirmed_at ? "You confirmed receiving this item. Thank you!" : "Claim approved. Arrange a handoff with the finder, then confirm once you receive the item.") : "This claim was not approved."}</p>{!guest && myClaim.status === "approved" && !myClaim.handoff_confirmed_at && <button className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(myClaim)}>I received this item</button>}{!guest && myClaim.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(myClaim.id)}>Message finder</button>}</div> :
             selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <div className="info claim-panel"><h2>Is this yours?</h2><p>Sign in or create an account to send private proof to the finder and request a claim.</p></div> : <form className="info claim-panel" onSubmit={claim}>
               <span className="eyebrow">Take the next step</span><h2>Is this yours?</h2><p>Share a detail only the owner would know. Your proof is visible only to you and the finder.</p>
               <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe a unique mark, contents, or another private detail" /></label>
@@ -269,7 +341,7 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
             </form>)}
           {selected.user_id === user.id && selected.report_type === "found" && <div className="info claim-panel"><span className="eyebrow">Owner requests</span><h2>Claims on this report</h2>
             {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No one has claimed this item yet. New requests will appear here.</p>}
-            {claims.filter(c => c.report_id === selected.id).map(c => <div className="claim-request" key={c.id}><span className="tag tag-neutral">{c.status}</span><p>{c.proof}</p>
+            {claims.filter(c => c.report_id === selected.id).map(c => <div className="claim-request" key={c.id}><span className="tag tag-neutral">{c.status}</span><p>{c.proof}</p>{c.status === "approved" && <p className="note">{c.handoff_confirmed_at ? `Return confirmed by claimant on ${new Date(c.handoff_confirmed_at).toLocaleDateString()}` : "Awaiting claimant confirmation of item handoff."}</p>}{!guest && c.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(c.id)}>Message claimant</button>}
               {!guest && c.status === "pending" && selected.status === "open" && <div className="claim-actions"><button className="button button-primary" disabled={busy} onClick={() => void decide(c, "approved")}>Approve</button><button className="button button-secondary" disabled={busy} onClick={() => void decide(c, "rejected")}>Reject</button></div>}
             </div>)}</div>}
           {actionError && <p className="err" role="alert">{actionError}</p>}
@@ -310,13 +382,13 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
       </div>}
     </section>}
 
-    {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
+    {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
 
     {view === "edit" && selected && selected.user_id === user.id && !guest && <ReportEditor key={selected.id} report={selected} onBack={() => setView("mine")} onChanged={() => void loadReports()} onDone={message => { setNotice(message); setView("mine"); void loadReports(); }} />}
 
     {view === "mine" && <section className="activity-page">
       {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
-      <KarmaPanel enabled={!guest} refreshKey={claims.filter(c => c.status === "approved").length} />
+      <KarmaPanel enabled={!guest} refreshKey={handoffRefresh + claims.filter(c => !!c.handoff_confirmed_at).length} />
       <div className="page-heading activity-heading"><div><span className="eyebrow">Your corner</span><h1>My activity</h1><p>Track your reports, matching, and ownership requests.</p></div><button className="button button-secondary" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh activity</button></div>
       <div className="activity-layout"><section><div className="results-heading"><h2>My reports</h2><span>{myItems.length}</span></div>
         {!loading && !loadError && !myItems.length && <div className="state-card"><b>No reports yet</b><p>{guest ? "Sign in to post an item and track it here." : "Start with a lost or found report. Your updates will appear here."}</p>{!guest && <button className="button button-primary" onClick={() => startPost("lost")}>Report an item</button>}</div>}
@@ -325,16 +397,18 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
         {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
         {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
         {!claimsLoading && !claimsError && !claims.some(c => c.claimant_id === user.id) && <div className="state-card"><b>No claims submitted</b><p>Found something that belongs to you? Open its report to send private proof to the finder.</p><button className="button button-secondary" onClick={() => setView("browse")}>Browse found items</button></div>}
-        {claims.filter(c => c.claimant_id === user.id).map(c => { const report = reports.find(r => r.id === c.report_id); return <div className="claim-activity" key={c.id}><span className="tag tag-neutral">{c.status}</span><h3>{report?.title ?? "Report " + c.report_id}</h3><p>Claim submitted {new Date(c.created_at).toLocaleDateString()}</p>{report && <button className="text-action" onClick={() => openItem(report)}>View report →</button>}</div>; })}
+        {claims.filter(c => c.claimant_id === user.id).map(c => { const report = reports.find(r => r.id === c.report_id); return <div className="claim-activity" key={c.id}><span className="tag tag-neutral">{c.status}</span><h3>{report?.title ?? "Report " + c.report_id}</h3><p>Claim submitted {new Date(c.created_at).toLocaleDateString()}</p>{c.status === "approved" && <p className="note">{c.handoff_confirmed_at ? "Return confirmed — thank you!" : "Approved — waiting for your confirmation after receiving the item."}</p>}{!guest && c.status === "approved" && !c.handoff_confirmed_at && <button className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(c)}>I received this item</button>}{report && <button className="text-action" onClick={() => openItem(report)}>View report →</button>}{!guest && c.status !== "rejected" && <button className="text-action" onClick={() => openMessages(c.id)}>Message finder →</button>}</div>; })}
       </section></div>
     </section>}
 
+    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
+
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
-  <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>
+  <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("browse"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
     <span>Explore</span>
   </button>
-  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { setCompletedReport(null); setView("ai"); }}>
+  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setCompletedReport(null); setView("ai"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
     <span>AI search</span>
   </button>
@@ -346,9 +420,13 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
     </svg>
     <span>Report item</span>
   </button>
-  <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>
+  <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("mine"); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /></svg>
     <span>My activity</span>
+  </button>
+  <button className={tab === "messages" ? "on" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => openMessages()}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 9.6 9.6 0 0 1-4-.9L3 21l1.7-4a8.5 8.5 0 1 1 16.3-5.5z" /></svg>
+    <span>Messages</span>
   </button>
 </div></nav>
   </>;

@@ -10,8 +10,9 @@ import { LocationPicker } from "./campus-map/location-picker";
 const api = new LostSignalApi();
 const categories = ["Bags", "Keys", "IDs", "Tech", "Other"];
 
-export function ReportForm({ initialType, client, userId, guest = false, onBack, onSaved, onReportCreated }: {
+export function ReportForm({ initialType, client, userId, guest = false, onBack, onSaved, onReportCreated, onTypeChange }: {
   initialType: WizardDraft["type"];
+  onTypeChange?: (type: WizardDraft["type"]) => void;
   client: SupabaseClient;
   userId: string;
   guest?: boolean;
@@ -19,7 +20,7 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
   onSaved: (report: Report, photoUploaded: boolean) => void;
   onReportCreated: () => void;
 }) {
-  const storageKey = `lostsignal-report-draft-v1-${initialType}`;
+  const storageKey = `lostsignal-report-draft-v2-${userId}-${initialType}`;
   const [draft, setDraft] = useState<WizardDraft>(() => blankDraft(initialType));
   const [step, setStep] = useState<WizardStep>(1);
   const [ready, setReady] = useState(false);
@@ -40,6 +41,8 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
     queueMicrotask(() => {
       if (!active) return;
       try {
+        // Discard account-agnostic legacy drafts so users cannot inherit them.
+        sessionStorage.removeItem(`lostsignal-report-draft-v1-${initialType}`);
         const raw = sessionStorage.getItem(storageKey);
         if (raw) {
           const value = JSON.parse(raw);
@@ -55,7 +58,7 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
       setReady(true);
     });
     return () => { active = false; };
-  }, [storageKey]);
+  }, [storageKey, initialType]);
   useEffect(() => {
     if (!ready) return;
     try { sessionStorage.setItem(storageKey, JSON.stringify({ draft, step, hadPhoto: Boolean(photoFile) || photoMissing, savedReport })); } catch {}
@@ -124,6 +127,11 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
     <button type="button" className="back" onClick={onBack}>← Back to browse</button>
     <div className="page-heading"><span className="eyebrow">Create a {draft.type} report</span><h1 id="report-title">{draft.type === "found" ? "Help it find its owner." : "Let’s find your item."}</h1>
       <p>Just three short steps. Your details stay here while you move between them.</p></div>
+    {onTypeChange && <fieldset className="type-choice report-type-choice" disabled={busy || !!savedReport}>
+      <legend>Which report do you want to make?</legend>
+      <label className={draft.type === "lost" ? "selected" : ""}><input type="radio" name="reportType" checked={draft.type === "lost"} onChange={() => onTypeChange("lost")} /><span><b><span className="type-word">Lost</span> report</b><small>I lost something</small></span></label>
+      <label className={draft.type === "found" ? "selected" : ""}><input type="radio" name="reportType" checked={draft.type === "found"} onChange={() => onTypeChange("found")} /><span><b><span className="type-word">Found</span> report</b><small>I found something</small></span></label>
+    </fieldset>}
     <div className="wizard-progress" aria-label={`Step ${step} of 3`}><span>Step {step} of 3</span><div className="wizard-progress-track"><span style={{ width: `${step / 3 * 100}%` }} /></div><span>{step === 1 ? title : step === 2 ? "Where and when?" : "Review and post"}</span></div>
     {restored && <p className="notice" role="status">Your report draft was restored. {photoMissing && "Please reselect your photo before posting."}</p>}
     <form className="wizard-card" onSubmit={submit} aria-busy={busy} noValidate>
@@ -169,7 +177,7 @@ function PhotoControl({ photoKey, photoFile, preview, photoMissing, disabled, on
     // eslint-disable-next-line @next/next/no-img-element
     <img src={preview} alt="Selected item preview" />
   ) : <span>{photoMissing ? "Reselect photo" : "Photo optional"}</span>}</div>
-    <div className="wizard-photo-controls"><b>Add a photo</b><p>JPEG, PNG, or WebP · Up to 5 MiB</p><div className="wizard-photo-actions">
+    <div className="wizard-photo-controls"><b>Add a photo</b><p>JPEG, PNG, or WebP · Up to 5 MiB</p><p className="photo-privacy-tip"><strong>Protect personal information:</strong> Before uploading, blur or cover names, ID numbers, card numbers, barcodes, and other sensitive details using your phone’s photo editor. Uploaded photos may appear in campus listings.</p><div className="wizard-photo-actions">
       <label className="button button-primary">Take photo<input key={`camera-${photoKey}`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={onPhoto} disabled={disabled} aria-label="Take item photo" /></label>
       <label className="button button-secondary">Upload photo<input key={`upload-${photoKey}`} type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhoto} disabled={disabled} aria-label="Upload item photo" /></label>
     </div>{photoFile && <button type="button" className="text-action" onClick={onRemove} disabled={disabled}>Remove {photoFile.name}</button>}</div>

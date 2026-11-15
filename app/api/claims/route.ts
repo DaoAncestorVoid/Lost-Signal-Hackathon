@@ -42,7 +42,7 @@ export async function GET() {
 
   const { data: claims, error } = await supabase
     .from("claims")
-    .select("id,report_id,claimant_id,proof,status,created_at")
+    .select("id,report_id,claimant_id,proof,status,created_at,handoff_confirmed_at")
     .order("created_at", { ascending: false });
   if (error) {
     return Response.json({ error: "Unable to load claims" }, { status: 500 });

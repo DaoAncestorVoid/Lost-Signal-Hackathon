@@ -1,4 +1,4 @@
-export function claimErrorResponse(code: string | undefined, action: "submit" | "decide") {
+export function claimErrorResponse(code: string | undefined, action: "submit" | "decide" | "confirm") {
   if (code === "P0002") {
     return Response.json({ error: "Claim or report not found" }, { status: 404 });
   }
