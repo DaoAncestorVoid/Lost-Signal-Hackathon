@@ -10,6 +10,7 @@ import { ReportEditor } from "./components/report-editor";
 import { NotificationBell } from "./components/notification-bell";
 import { MatchResultCard } from "./components/match-result-card";
 import { KarmaPanel } from "./components/karma-panel";
+import { ReturnJourney } from "./components/return-journey";
 import { InboxProvider, MessagesBadge, useInbox } from "./components/inbox-state";
 import { MessagesView } from "./components/messages-view";
 import { BrandWordmark } from "./components/brand-wordmark";
@@ -305,7 +306,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       const created = await api.submitClaim(parsed.data.report_id, parsed.data.proof);
       if (!active.current) return;
       setClaims(previous => [created, ...previous.filter(c => c.id !== created.id)]);
-      setProof(""); setNotice("Claim submitted. The finder must review your proof.");
+      setProof(""); setNotice("Ownership request sent! The finder will review your proof. You can message them while you wait.");
     } catch (err) {
       if (active.current) { setActionError(errorMessage(err)); void loadClaims(); }
     } finally { pending.current = false; if (active.current) setBusy(false); }
@@ -318,7 +319,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       const updated = await api.decideClaim(claim.id, status);
       if (!active.current) return;
       setClaims(previous => previous.map(c => c.id === updated.id ? updated : c));
-      setNotice("Claim " + updated.status + ".");
+      setNotice(updated.status === "approved" ? "Ownership approved. Message the claimant to arrange a safe pickup; they confirm receipt after the handoff." : "Claim declined. You can review other requests.");
       await Promise.all([loadReports(), loadClaims()]);
     } catch (err) { if (active.current) setActionError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
@@ -333,7 +334,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       const updated = await api.confirmHandoff(claim.id);
       if (!active.current) return;
       setClaims(previous => previous.map(c => c.id === updated.id ? updated : c));
-      setNotice("Item return confirmed. Thank you for helping close the loop!");
+      setNotice("Return confirmed! The finder has earned 50 Campus Karma points. Thank you for helping close the loop!");
       setHandoffRefresh(n => n + 1);
       await loadClaims();
     } catch (err) { if (active.current) setActionError(errorMessage(err)); }
@@ -360,7 +361,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
   return <>
-    {completedReport && (view === "ai" || view === "mine") && <div className="success-panel" role="status"><div><span className="eyebrow">Report published</span><b>{completedReport.title}</b><p>{notice} {completedReport.report_type === "lost" ? "Compare it with campus finds below." : "You can track claims in your activity."}</p></div><button className="button button-secondary" onClick={() => { openItem(completedReport); setCompletedReport(null); }}>View report</button></div>}
+    {completedReport && (view === "ai" || view === "mine") && <div className="success-panel" role="status"><div><span className="eyebrow">Report published</span><b>{completedReport.title}</b><p>{notice} {completedReport.report_type === "lost" ? "Compare it with campus finds below." : "You’ll be notified if someone claims it. Review their proof, arrange a handoff, and earn Karma when they confirm receipt."}</p></div><button className="button button-secondary" onClick={() => { openItem(completedReport); setCompletedReport(null); }}>View report</button></div>}
     {notice && !completedReport && <p className="notice" role="status">{notice}</p>}
     {(view === "ai" || view === "mine" || view === "detail") && <>
       {loading && <p role="status">Loading reports…</p>}
@@ -381,16 +382,16 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
           <div className="info detail-facts"><h2>Report details</h2><div><span>Location</span><b>{selected.location}</b></div><div><span>Reported</span><b>{new Date(selected.created_at).toLocaleDateString()}</b></div></div>
           {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
           {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
-          {myClaim ? <div id={`claim-${myClaim.id}`} className={"info claim-panel" + (focusedClaim === myClaim.id ? " focused-claim" : "")} role="status"><span className="eyebrow">Your claim</span><h2>Status: {myClaim.status}</h2><p>{myClaim.status === "pending" ? "The finder will review the details you provided." : myClaim.status === "approved" ? (myClaim.handoff_confirmed_at ? "You confirmed receiving this item. Thank you!" : "Claim approved. Arrange a handoff with the finder, then confirm once you receive the item.") : "This claim was not approved."}</p>{!guest && myClaim.status === "approved" && !myClaim.handoff_confirmed_at && <button className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(myClaim)}>I received this item</button>}{!guest && myClaim.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(myClaim.id)}>Message finder</button>}</div> :
+          {myClaim ? <div id={`claim-${myClaim.id}`} className={"info claim-panel" + (focusedClaim === myClaim.id ? " focused-claim" : "")} role="status"><span className="eyebrow">Your ownership request</span><h2>{myClaim.handoff_confirmed_at ? "Return complete" : myClaim.status === "approved" ? "You're approved" : myClaim.status === "pending" ? "Request sent" : "Request declined"}</h2><ReturnJourney claim={myClaim} perspective="claimant" />{!guest && myClaim.status !== "rejected" && !myClaim.handoff_confirmed_at && <button className="button button-primary" type="button" onClick={() => openMessages(myClaim.id)}>{myClaim.status === "pending" ? "Message finder" : "Arrange pickup →"}</button>}{!guest && myClaim.status === "approved" && !myClaim.handoff_confirmed_at && <button className="button button-secondary" type="button" disabled={busy} onClick={() => void confirmHandoff(myClaim)}>Confirm receipt</button>}</div> :
             selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <div className="info claim-panel"><h2>Is this yours?</h2><p>Sign in or create an account to send private proof to the finder and request a claim.</p></div> : <form className="info claim-panel" onSubmit={claim}>
-              <span className="eyebrow">Take the next step</span><h2>Is this yours?</h2><p>Share a detail only the owner would know. Your proof is visible only to you and the finder.</p>
+              <span className="eyebrow">Ownership request</span><h2>Is this yours?</h2><p className="claim-form-intro">Share a detail only the owner would know. The finder will review it privately.</p>
               <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe a unique mark, contents, or another private detail" /></label>
-              <button className="button button-primary submit-button" disabled={busy || claimsLoading || !!claimsError}>{busy ? "Submitting…" : "Request this item"}</button>
+              <button className="button button-primary submit-button" disabled={busy || claimsLoading || !!claimsError}>{busy ? "Submitting…" : "Send ownership request →"}</button>
             </form>)}
-          {selected.user_id === user.id && selected.report_type === "found" && <div className="info claim-panel"><span className="eyebrow">Owner requests</span><h2>Claims on this report</h2>
-            {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No one has claimed this item yet. New requests will appear here.</p>}
-            {claims.filter(c => c.report_id === selected.id).map(c => <div id={`claim-${c.id}`} className={"claim-request" + (focusedClaim === c.id ? " focused-claim" : "")} key={c.id}><span className="tag tag-neutral">{c.status}</span><p>{c.proof}</p>{c.status === "approved" && <p className="note">{c.handoff_confirmed_at ? `Return confirmed by claimant on ${new Date(c.handoff_confirmed_at).toLocaleDateString()}` : "Awaiting claimant confirmation of item handoff."}</p>}{!guest && c.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(c.id)}>Message claimant</button>}
-              {!guest && c.status === "pending" && selected.status === "open" && <div className="claim-actions"><button className="button button-primary" disabled={busy} onClick={() => void decide(c, "approved")}>Approve</button><button className="button button-secondary" disabled={busy} onClick={() => void decide(c, "rejected")}>Reject</button></div>}
+          {selected.user_id === user.id && selected.report_type === "found" && <div className="info claim-panel"><div className="claim-panel-heading"><div><span className="eyebrow">Your found item</span><h2>Ownership requests</h2></div><span className="claim-count">{claims.filter(c => c.report_id === selected.id && c.status === "pending").length} pending</span></div>
+            {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No requests yet. We’ll notify you when someone claims this item.</p>}
+            {claims.filter(c => c.report_id === selected.id).map(c => <div id={`claim-${c.id}`} className={"claim-request" + (focusedClaim === c.id ? " focused-claim" : "")} key={c.id}><ReturnJourney claim={c} perspective="finder" compact /><details className="claim-proof"><summary>View private ownership proof</summary><p>{c.proof}</p></details>{!guest && c.status !== "rejected" && <button className={c.status === "approved" && !c.handoff_confirmed_at ? "button button-primary" : "button button-secondary"} onClick={() => openMessages(c.id)}>{c.status === "approved" && !c.handoff_confirmed_at ? "Arrange pickup →" : "Message claimant"}</button>}
+              {!guest && c.status === "pending" && selected.status === "open" && <div className="claim-actions"><button className="button button-primary" disabled={busy} onClick={() => void decide(c, "approved")}>Approve ownership</button><button className="button button-secondary" disabled={busy} onClick={() => void decide(c, "rejected")}>Decline</button></div>}
             </div>)}</div>}
           {actionError && <p className="err" role="alert">{actionError}</p>}
           {selected.user_id === user.id && selected.status === "open" && <button className="button button-secondary submit-button" onClick={() => startMatching(selected)}>Find matches for this report →</button>}
@@ -482,8 +483,12 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
 
     {view === "mine" && <section className="activity-page">
       {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
-      <KarmaPanel enabled={!guest} refreshKey={handoffRefresh + claims.filter(c => !!c.handoff_confirmed_at).length} />
-      <div className="page-heading activity-heading"><div><span className="eyebrow">Your corner</span><h1>My activity</h1><p>Track your reports, matching, and ownership requests.</p></div><button className="button button-secondary" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh activity</button></div>
+      <div className="page-heading activity-heading"><div><span className="eyebrow">Your corner</span><h1>My activity</h1><p>Everything you’ve reported or claimed, all in one place.</p></div><button className="button button-secondary" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh activity</button></div>
+      {!claimsLoading && !claimsError && (claims.some(c => c.status === "pending" && myItems.some(r => r.id === c.report_id && r.report_type === "found")) || claims.some(c => c.claimant_id === user.id && c.status === "approved" && !c.handoff_confirmed_at)) && <div className="activity-next-actions" aria-label="Items needing action">
+        <div className="activity-next-title"><span className="activity-next-icon" aria-hidden="true">!</span><div><span className="eyebrow">Needs attention</span><h2>Your next steps</h2></div></div>
+        {claims.filter(c => c.status === "pending" && myItems.some(r => r.id === c.report_id && r.report_type === "found")).map(c => { const report = reports.find(r => r.id === c.report_id); return <div key={c.id} className="activity-next-row"><div><b>Review an ownership request</b><p>{report?.title ?? "Found item"}</p></div>{report && <button type="button" className="button button-primary" onClick={() => openItem(report)}>Review claim →</button>}</div>; })}
+        {claims.filter(c => c.claimant_id === user.id && c.status === "approved" && !c.handoff_confirmed_at).map(c => <div key={c.id} className="activity-next-row"><div><b>Have you received your item?</b><p>Confirm only after pickup.</p></div><div className="activity-next-buttons"><button type="button" className="button button-secondary" onClick={() => openMessages(c.id)}>Message finder</button><button type="button" className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(c)}>Confirm receipt</button></div></div>)}
+      </div>}
       <div className="activity-layout"><section><div className="results-heading"><h2>My reports</h2><span>{myItems.length}</span></div>
         {!loading && !loadError && !myItems.length && <div className="state-card"><b>No reports yet</b><p>{guest ? "Sign in to post an item and track it here." : "Start with a lost or found report. Your updates will appear here."}</p>{!guest && <button className="button button-primary" onClick={() => startPost("lost")}>Report an item</button>}</div>}
         {myItems.map(item => { const activeClaim = claims.some(c => c.report_id === item.id && (c.status === "pending" || c.status === "approved")); const anyClaim = claims.some(c => c.report_id === item.id); return <article className="activity-card" key={item.id}><ReportPhoto report={item} className="activity-photo" /><div><div className="tags"><span className="tag">{item.report_type}</span><span className="tag tag-neutral">{item.status}</span></div><h3>{item.title}</h3><p>{item.location}</p><div className="activity-actions"><button className="text-action" onClick={() => openItem(item)}>View report →</button>{item.status === "open" && <button className="text-action" onClick={() => startMatching(item)}>Find matches →</button>}{!guest && <><button className="text-action" disabled={item.status !== "open" || activeClaim || claimsLoading || !!claimsError} onClick={() => { setSelectedId(item.id); setView("edit"); }}>Edit</button><button className="text-action danger-action" disabled={anyClaim || claimsLoading || !!claimsError || busy} onClick={() => void deleteOwnReport(item)}>Delete</button></>}</div>{activeClaim && <span className="field-hint">This report has an active claim; editing is paused.</span>}{anyClaim && <span className="field-hint">Reports with claims cannot be deleted.</span>}{item.report_type === "found" && claims.some(c => c.report_id === item.id && c.status === "pending") && <span className="activity-notification">Pending claim to review</span>}</div></article>; })}
@@ -491,8 +496,11 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
         {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
         {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
         {!claimsLoading && !claimsError && !claims.some(c => c.claimant_id === user.id) && <div className="state-card"><b>No claims submitted</b><p>Found something that belongs to you? Open its report to send private proof to the finder.</p><button className="button button-secondary" onClick={() => setView("browse")}>Browse found items</button></div>}
-        {claims.filter(c => c.claimant_id === user.id).map(c => { const report = reports.find(r => r.id === c.report_id); return <div className="claim-activity" key={c.id}><span className="tag tag-neutral">{c.status}</span><h3>{report?.title ?? "Report " + c.report_id}</h3><p>Claim submitted {new Date(c.created_at).toLocaleDateString()}</p>{c.status === "approved" && <p className="note">{c.handoff_confirmed_at ? "Return confirmed — thank you!" : "Approved — waiting for your confirmation after receiving the item."}</p>}{!guest && c.status === "approved" && !c.handoff_confirmed_at && <button className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(c)}>I received this item</button>}{report && <button className="text-action" onClick={() => openItem(report)}>View report →</button>}{!guest && c.status !== "rejected" && <button className="text-action" onClick={() => openMessages(c.id)}>Message finder →</button>}</div>; })}
+        {claims.filter(c => c.claimant_id === user.id).map(c => { const report = reports.find(r => r.id === c.report_id); return <div className="claim-activity" key={c.id}><h3>{report?.title ?? "Report " + c.report_id}</h3><ReturnJourney claim={c} perspective="claimant" compact />{!guest && c.status === "approved" && !c.handoff_confirmed_at && <button className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(c)}>Confirm received</button>}{report && <button className="text-action" onClick={() => openItem(report)}>View report →</button>}{!guest && c.status !== "rejected" && <button className="text-action" onClick={() => openMessages(c.id)}>Message finder →</button>}</div>; })}
       </section></div>
+      <section className="activity-karma-footer" aria-label="Campus Karma rewards">
+        <KarmaPanel enabled={!guest} refreshKey={handoffRefresh + claims.filter(c => !!c.handoff_confirmed_at).length} />
+      </section>
     </section>}
 
     {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
