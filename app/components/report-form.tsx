@@ -20,7 +20,7 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
   onSaved: (report: Report, photoUploaded: boolean) => void;
   onReportCreated: () => void;
 }) {
-  const storageKey = `lostsignal-report-draft-v1-${initialType}`;
+  const storageKey = `lostsignal-report-draft-v2-${userId}-${initialType}`;
   const [draft, setDraft] = useState<WizardDraft>(() => blankDraft(initialType));
   const [step, setStep] = useState<WizardStep>(1);
   const [ready, setReady] = useState(false);
@@ -41,6 +41,8 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
     queueMicrotask(() => {
       if (!active) return;
       try {
+        // Discard account-agnostic legacy drafts so users cannot inherit them.
+        sessionStorage.removeItem(`lostsignal-report-draft-v1-${initialType}`);
         const raw = sessionStorage.getItem(storageKey);
         if (raw) {
           const value = JSON.parse(raw);
@@ -56,7 +58,7 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
       setReady(true);
     });
     return () => { active = false; };
-  }, [storageKey]);
+  }, [storageKey, initialType]);
   useEffect(() => {
     if (!ready) return;
     try { sessionStorage.setItem(storageKey, JSON.stringify({ draft, step, hadPhoto: Boolean(photoFile) || photoMissing, savedReport })); } catch {}
@@ -175,7 +177,7 @@ function PhotoControl({ photoKey, photoFile, preview, photoMissing, disabled, on
     // eslint-disable-next-line @next/next/no-img-element
     <img src={preview} alt="Selected item preview" />
   ) : <span>{photoMissing ? "Reselect photo" : "Photo optional"}</span>}</div>
-    <div className="wizard-photo-controls"><b>Add a photo</b><p>JPEG, PNG, or WebP · Up to 5 MiB</p><div className="wizard-photo-actions">
+    <div className="wizard-photo-controls"><b>Add a photo</b><p>JPEG, PNG, or WebP · Up to 5 MiB</p><p className="photo-privacy-tip"><strong>Protect personal information:</strong> Before uploading, blur or cover names, ID numbers, card numbers, barcodes, and other sensitive details using your phone’s photo editor. Uploaded photos may appear in campus listings.</p><div className="wizard-photo-actions">
       <label className="button button-primary">Take photo<input key={`camera-${photoKey}`} type="file" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={onPhoto} disabled={disabled} aria-label="Take item photo" /></label>
       <label className="button button-secondary">Upload photo<input key={`upload-${photoKey}`} type="file" accept="image/jpeg,image/png,image/webp" onChange={onPhoto} disabled={disabled} aria-label="Upload item photo" /></label>
     </div>{photoFile && <button type="button" className="text-action" onClick={onRemove} disabled={disabled}>Remove {photoFile.name}</button>}</div>
