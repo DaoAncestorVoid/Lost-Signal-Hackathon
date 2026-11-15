@@ -58,7 +58,7 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
       setReady(true);
     });
     return () => { active = false; };
-  }, [storageKey]);
+  }, [storageKey, initialType]);
   useEffect(() => {
     if (!ready) return;
     try { sessionStorage.setItem(storageKey, JSON.stringify({ draft, step, hadPhoto: Boolean(photoFile) || photoMissing, savedReport })); } catch {}
