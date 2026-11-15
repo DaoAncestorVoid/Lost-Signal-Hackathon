@@ -340,6 +340,10 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     } catch (err) { if (active.current) setActionError(errorMessage(err)); }
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
+  function openMatchFinder() {
+    chooseMatchMode(!guest && matchableItems.length ? "report" : "quick");
+    setView("ai");
+  }
   function startMatching(report: Report) {
     setAiMode("report"); setSourceId(report.id); setAiError(""); setAiResults(null); setAnalysis(null); setView("ai");
   }
@@ -368,7 +372,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
       {loadError && <p className="err" role="alert">{loadError} <button className="small" onClick={() => void loadReports()}>Retry reports</button></p>}
     </>}
     {view === "browse" && <BrowseView reports={filtered} loading={loading} error={loadError} query={query} category={category} categories={categories} mode={browseMode}
-      onQuery={setQuery} onCategory={setCategory} onMode={setBrowseMode} onOpen={openItem} onLost={() => startPost("lost")} onFound={() => startPost("found")} onMatches={() => setView("ai")} onRetry={() => void loadReports()} />}
+      onQuery={setQuery} onCategory={setCategory} onMode={setBrowseMode} onOpen={openItem} onLost={() => startPost("lost")} onFound={() => startPost("found")} onMatches={openMatchFinder} onRetry={() => void loadReports()} />}
 
     {view === "detail" && <section className="detail-page">
       <button className="back" onClick={() => { clearSharedReportUrl(); setView("browse"); }}>← Back to browse</button>
@@ -512,7 +516,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
     <span>Explore</span>
   </button>
-  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setCompletedReport(null); setView("ai"); }}>
+  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setCompletedReport(null); openMatchFinder(); }}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
     <span>AI Search</span>
   </button>
