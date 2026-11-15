@@ -32,18 +32,16 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
   const threadEnd = useRef<HTMLDivElement>(null);
   const [previews, setPreviews] = useState<Record<string, { body: string; created_at: string }>>({});
 
-  const selected = conversations.find(row => row.claim.id === selectedId) ?? null;
-  // Choose a conversation as soon as the inbox becomes available.
-  useEffect(() => {
-    if (conversations.length === 0) return;
-    if (selectedId && conversations.some(row => row.claim.id === selectedId)) return;
-    setSelectedId(initialClaimId && conversations.some(row => row.claim.id === initialClaimId)
-      ? initialClaimId : conversations[0].claim.id);
-  }, [conversations, selectedId, initialClaimId]);
+  // Derive the default conversation without synchronously setting state in an effect.
+  const activeSelectedId =
+    selectedId && conversations.some(row => row.claim.id === selectedId) ? selectedId
+    : initialClaimId && conversations.some(row => row.claim.id === initialClaimId) ? initialClaimId
+    : conversations[0]?.claim.id ?? null;
+  const selected = conversations.find(row => row.claim.id === activeSelectedId) ?? null;
 
   useEffect(() => {
     threadEnd.current?.scrollIntoView({ behavior: "auto", block: "end" });
-  }, [messages, selectedId]);
+  }, [messages, activeSelectedId]);
 
   useEffect(() => {
     if (!conversations.length) return;
@@ -68,20 +66,20 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
   }, [client, conversations]);
 
   const loadMessages = useCallback(async (signal?: AbortSignal) => {
-    if (!selectedId || !conversations.some(row => row.claim.id === selectedId)) return;
+    if (!activeSelectedId || !conversations.some(row => row.claim.id === activeSelectedId)) return;
     const { data, error: loadError } = await client.from("messages")
       .select("id,claim_id,sender_id,body,created_at")
-      .eq("claim_id", selectedId)
+      .eq("claim_id", activeSelectedId)
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
       .limit(MAX_DISPLAY_MESSAGES);
     if (signal?.aborted) return;
     if (loadError) throw new Error("Unable to load conversation.");
     setMessages(((data ?? []) as ChatMessage[]).reverse());
-  }, [client, selectedId, conversations]);
+  }, [client, activeSelectedId, conversations]);
 
   useEffect(() => {
-    if (!selectedId || !selected) return;
+    if (!activeSelectedId || !selected) return;
     const abort = new AbortController();
     const refresh = async () => {
       try { await loadMessages(abort.signal); if (!abort.signal.aborted) setError(""); }
@@ -92,7 +90,7 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
     // Poll only while this conversation is open. Realtime can be added later.
     const interval = setInterval(() => { if (!document.hidden) void refresh(); }, 5000);
     return () => { abort.abort(); clearTimeout(start); clearInterval(interval); };
-  }, [selectedId, selected, loadMessages]);
+  }, [activeSelectedId, selected, loadMessages]);
 
   async function send(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,8 +129,8 @@ export function MessagesView({ client, userId, claims, reports, initialClaimId, 
         <h2>Conversations <span>({conversations.length})</span></h2>
         {conversations.map(({ claim, report }) => <button type="button" key={claim.id}
           onClick={() => selectConversation(claim.id)}
-          className={"messages-conversation" + (selectedId === claim.id ? " is-selected" : "")}
-          aria-current={selectedId === claim.id ? "true" : undefined}>
+          className={"messages-conversation" + (activeSelectedId === claim.id ? " is-selected" : "")}
+          aria-current={activeSelectedId === claim.id ? "true" : undefined}>
           <b>{report.title}</b>
           <span>{claim.claimant_id === userId ? "With the finder" : "With a claimant"} · {claim.status}</span>
           {previews[claim.id] && <span className="messages-preview">{previews[claim.id].body.length > 70 ? previews[claim.id].body.slice(0, 70) + "…" : previews[claim.id].body}</span>}
