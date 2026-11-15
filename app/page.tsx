@@ -9,10 +9,11 @@ import { BrowseView } from "./components/browse-view";
 import { ReportForm } from "./components/report-form";
 import { MatchResultCard } from "./components/match-result-card";
 import { KarmaPanel } from "./components/karma-panel";
+import { MessagesView } from "./components/messages-view";
 import { LostSignalApi, browseCategories, browseReports, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewClaim } from "@/lib/claims/validation";
 
-type View = "browse" | "ai" | "post" | "mine" | "detail";
+type View = "browse" | "ai" | "post" | "mine" | "detail" | "messages";
 const api = new LostSignalApi();
 const postCategories = ["Bags", "Keys", "IDs", "Tech", "Other"];
 const errorMessage = (err: unknown) => err instanceof Error ? err.message : "The request failed. Please try again.";
@@ -88,6 +89,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   const [category, setCategory] = useState("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedMessageClaim, setSelectedMessageClaim] = useState<string | null>(null);
   const [proof, setProof] = useState("");
   const [notice, setNotice] = useState("");
   const [actionError, setActionError] = useState("");
@@ -148,6 +150,10 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   const myClaim = selected && claims.find(c => c.report_id === selected.id && c.claimant_id === user.id);
   const tab = view === "detail" ? "browse" : view;
 
+  function openMessages(claimId?: string) {
+    setSelectedMessageClaim(claimId ?? null);
+    setView("messages");
+  }
   function startPost(type: "lost" | "found") {
     setReportType(type); setFormKey(key => key + 1); setCompletedReport(null); setNotice(""); setView("post");
   }
@@ -235,7 +241,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
           <div className="info detail-facts"><h2>Report details</h2><div><span>Location</span><b>{selected.location}</b></div><div><span>Reported</span><b>{new Date(selected.created_at).toLocaleDateString()}</b></div></div>
           {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
           {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
-          {myClaim ? <div className="info claim-panel" role="status"><span className="eyebrow">Your claim</span><h2>Status: {myClaim.status}</h2><p>{myClaim.status === "pending" ? "The finder will review the details you provided." : myClaim.status === "approved" ? "The finder approved your claim." : "This claim was not approved."}</p></div> :
+          {myClaim ? <div className="info claim-panel" role="status"><span className="eyebrow">Your claim</span><h2>Status: {myClaim.status}</h2><p>{myClaim.status === "pending" ? "The finder will review the details you provided." : myClaim.status === "approved" ? "The finder approved your claim." : "This claim was not approved."}</p>{!guest && myClaim.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(myClaim.id)}>Message finder</button>}</div> :
             selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <div className="info claim-panel"><h2>Is this yours?</h2><p>Sign in or create an account to send private proof to the finder and request a claim.</p></div> : <form className="info claim-panel" onSubmit={claim}>
               <span className="eyebrow">Take the next step</span><h2>Is this yours?</h2><p>Share a detail only the owner would know. Your proof is visible only to you and the finder.</p>
               <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe a unique mark, contents, or another private detail" /></label>
@@ -243,7 +249,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
             </form>)}
           {selected.user_id === user.id && selected.report_type === "found" && <div className="info claim-panel"><span className="eyebrow">Owner requests</span><h2>Claims on this report</h2>
             {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No one has claimed this item yet. New requests will appear here.</p>}
-            {claims.filter(c => c.report_id === selected.id).map(c => <div className="claim-request" key={c.id}><span className="tag tag-neutral">{c.status}</span><p>{c.proof}</p>
+            {claims.filter(c => c.report_id === selected.id).map(c => <div className="claim-request" key={c.id}><span className="tag tag-neutral">{c.status}</span><p>{c.proof}</p>{!guest && c.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(c.id)}>Message claimant</button>}
               {!guest && c.status === "pending" && selected.status === "open" && <div className="claim-actions"><button className="button button-primary" disabled={busy} onClick={() => void decide(c, "approved")}>Approve</button><button className="button button-secondary" disabled={busy} onClick={() => void decide(c, "rejected")}>Reject</button></div>}
             </div>)}</div>}
           {actionError && <p className="err" role="alert">{actionError}</p>}
@@ -296,9 +302,11 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
         {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
         {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
         {!claimsLoading && !claimsError && !claims.some(c => c.claimant_id === user.id) && <div className="state-card"><b>No claims submitted</b><p>Found something that belongs to you? Open its report to send private proof to the finder.</p><button className="button button-secondary" onClick={() => setView("browse")}>Browse found items</button></div>}
-        {claims.filter(c => c.claimant_id === user.id).map(c => { const report = reports.find(r => r.id === c.report_id); return <div className="claim-activity" key={c.id}><span className="tag tag-neutral">{c.status}</span><h3>{report?.title ?? "Report " + c.report_id}</h3><p>Claim submitted {new Date(c.created_at).toLocaleDateString()}</p>{report && <button className="text-action" onClick={() => openItem(report)}>View report →</button>}</div>; })}
+        {claims.filter(c => c.claimant_id === user.id).map(c => { const report = reports.find(r => r.id === c.report_id); return <div className="claim-activity" key={c.id}><span className="tag tag-neutral">{c.status}</span><h3>{report?.title ?? "Report " + c.report_id}</h3><p>Claim submitted {new Date(c.created_at).toLocaleDateString()}</p>{report && <button className="text-action" onClick={() => openItem(report)}>View report →</button>}{!guest && c.status !== "rejected" && <button className="text-action" onClick={() => openMessages(c.id)}>Message finder →</button>}</div>; })}
       </section></div>
     </section>}
+
+    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
   <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>
@@ -320,6 +328,10 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /></svg>
     <span>My activity</span>
+  </button>
+  <button className={tab === "messages" ? "on" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => openMessages()}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 9.6 9.6 0 0 1-4-.9L3 21l1.7-4a8.5 8.5 0 1 1 16.3-5.5z" /></svg>
+    <span>Messages</span>
   </button>
 </div></nav>
   </>;
