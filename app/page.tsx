@@ -278,6 +278,26 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       {loadError && <p className="err" role="alert">{loadError} <button className="small" onClick={() => void loadReports()}>Retry reports</button></p>}
     </>}
     {view === "browse" && <section>
+      <div className="hero-banner">
+  <svg className="radar" viewBox="0 0 200 200" aria-hidden="true">
+  <circle className="dot" cx="112" cy="100" r="4" />
+  <circle className="dot d2" cx="72" cy="142" r="4" />
+  <circle className="dot d3" cx="142" cy="128" r="4" />
+  <g className="glass">
+    <circle cx="0" cy="0" r="22" fill="rgba(255,255,255,.15)" stroke="#fff" strokeWidth="4" />
+    <line x1="16" y1="16" x2="36" y2="36" stroke="#fff" strokeWidth="6" strokeLinecap="round" />
+  </g>
+</svg>
+  <div className="hb-text">
+    <h2>Lost something on campus?</h2>
+    <p>Search with AI or browse what others have found.</p>
+    <button type="button" className="hb-btn" onClick={() => setView("ai")}>Try AI search</button>
+  </div>
+  <div className="hb-stats">
+    <div className="hb-stat"><b>{reports.filter(r => r.report_type === "found" && r.status === "open").length}</b><span>Found</span></div>
+    <div className="hb-stat"><b>{reports.filter(r => r.status !== "open").length}</b><span>Resolved</span></div>
+  </div>
+</div>
       <div className="sbar">
         <input type="search" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search found items…" aria-label="Search found items" />
         <button className="ai" onClick={() => setView("ai")}>AI</button>
@@ -405,11 +425,29 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
     {view === "chat" && <section><h2 style={{ fontSize: 20 }}>Messages</h2><p className="empty">Messaging is not available yet. Use the claim form to privately provide proof to the finder.</p><form className="send"><input disabled placeholder="Messaging backend not available" aria-label="Message (unavailable)" /><button disabled>Send</button></form></section>}
 
     <nav aria-label="Main navigation"><div>
-      <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>Browse</button>
-      <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => setView("ai")}>AI search</button>
-      <button className="plus" aria-label={guest ? "Posting requires an account" : "Post lost or found item"} onClick={() => setView("post")}>+</button>
-      <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>My items</button>
-      <button className={tab === "chat" ? "on" : ""} aria-current={tab === "chat" ? "page" : undefined} onClick={() => setView("chat")}>Messages</button>
-    </div></nav>
+  <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => setView("browse")}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+    Browse
+  </button>
+  <button className={tab === "ai" ? "on" : ""} aria-current={tab === "ai" ? "page" : undefined} onClick={() => setView("ai")}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /></svg>
+    AI search
+  </button>
+  <button className="plus" aria-label={guest ? "Posting requires an account" : "Post lost or found item"} onClick={() => setView("post")}>
+  <svg viewBox="0 0 32 32" aria-hidden="true">
+    <circle className="p-ring" cx="14" cy="14" r="9" />
+    <line className="p-handle" x1="21" y1="21" x2="28" y2="28" />
+    <path d="M14 10v8M10 14h8" />
+  </svg>
+</button>
+  <button className={tab === "mine" ? "on" : ""} aria-current={tab === "mine" ? "page" : undefined} onClick={() => setView("mine")}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8l-9-5-9 5 9 5 9-5z" /><path d="M3 8v8l9 5 9-5V8" /></svg>
+    My items
+  </button>
+  <button className={tab === "chat" ? "on" : ""} aria-current={tab === "chat" ? "page" : undefined} onClick={() => setView("chat")}>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
+    Messages
+  </button>
+</div></nav>
   </>;
 }

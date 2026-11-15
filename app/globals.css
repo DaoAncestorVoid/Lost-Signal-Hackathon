@@ -77,3 +77,58 @@ fieldset{border:0;padding:0;margin:0;min-width:0}
 .notice{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--tint);color:var(--tinttext);font-size:14px}
 .info p{white-space:pre-wrap;overflow-wrap:anywhere}
 .match>div,.card .t{min-width:0;overflow-wrap:anywhere}
+/* hero banner */
+.hero-banner{position:relative;overflow:hidden;margin-top:16px;border-radius:20px;padding:18px;background:linear-gradient(135deg,#C8102E,#E8334F);color:#fff}
+.hero-banner .radar{position:absolute;right:-30px;top:-30px;width:190px;height:190px}
+.hb-text{position:relative;max-width:68%}
+.hb-text h2{margin:0 0 4px;font-size:20px;color:#fff}
+.hb-text p{margin:0;font-size:13px;color:rgba(255,255,255,.85)}
+.hb-btn{margin-top:12px;background:#fff;color:#C8102E;border:0;border-radius:16px;padding:8px 14px;font-weight:600;font-size:13px}
+.hb-stats{position:relative;display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:16px}
+.hb-stat{background:rgba(255,255,255,.18);border-radius:12px;padding:8px 4px;text-align:center}
+.hb-stat b{display:block;font-size:20px}
+.hb-stat span{font-size:11px;color:rgba(255,255,255,.85)}
+
+/* nav icons */
+nav button:not(.plus){display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px}
+nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* magnifying glass */
+.hero-banner .glass{animation:scan 6s ease-in-out infinite}
+@keyframes scan{
+  0%,100%{transform:translate(80px,90px)}
+  25%{transform:translate(135px,75px)}
+  50%{transform:translate(120px,130px)}
+  75%{transform:translate(75px,120px)}
+}
+.hero-banner .dot{fill:#fff;opacity:.35;animation:twinkle 3s ease-in-out infinite}
+.hero-banner .d2{animation-delay:1s}
+.hero-banner .d3{animation-delay:2s}
+@keyframes twinkle{0%,100%{opacity:.2}50%{opacity:.9}}
+
+@media (prefers-reduced-motion:reduce){
+  .hero-banner .glass{animation:none;transform:translate(100px,100px)}
+  .hero-banner .dot{animation:none}
+}
+
+/* animated plus button */
+nav .plus{display:flex;align-items:center;justify-content:center}
+nav .plus svg{width:32px;height:32px}
+.p-ring{transform-box:fill-box;transform-origin:center;stroke-dasharray:14 42.5;animation:ring-morph 5s ease-in-out infinite}
+.p-handle{stroke-dasharray:10;stroke-dashoffset:10;animation:handle-grow 5s ease-in-out infinite}
+@keyframes ring-morph{
+  0%{stroke-dasharray:14 42.5;transform:rotate(0)}
+  40%{stroke-dasharray:14 42.5;transform:rotate(720deg)}
+  55%{stroke-dasharray:56.5 0;transform:rotate(720deg)}
+  88%{stroke-dasharray:56.5 0;transform:rotate(720deg)}
+  100%{stroke-dasharray:14 42.5;transform:rotate(720deg)}
+}
+@keyframes handle-grow{
+  0%,40%{stroke-dashoffset:10}
+  55%,88%{stroke-dashoffset:0}
+  100%{stroke-dashoffset:10}
+}
+@media (prefers-reduced-motion:reduce){
+  .p-ring{animation:none;stroke-dasharray:none}
+  .p-handle{animation:none;stroke-dashoffset:0}
+}
