@@ -152,12 +152,16 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
     const target = new URLSearchParams(window.location.search).get("report");
     if (!target) return;
     const report = reports.find(item => item.id === target);
-    if (report) {
-      setSelectedId(report.id);
-      setView("detail");
-    } else {
-      setNotice("This report is unavailable or is no longer accessible.");
-    }
+    // URL synchronization runs after the effect, avoiding cascading render updates.
+    const timer = setTimeout(() => {
+      if (report) {
+        setSelectedId(report.id);
+        setView("detail");
+      } else {
+        setNotice("This report is unavailable or is no longer accessible.");
+      }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [loading, loadError, reports]);
   function clearSharedReportUrl() {
     const url = new URL(window.location.href);
