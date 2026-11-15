@@ -439,7 +439,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
                 {matchableItems.map(report => <label key={report.id} className={"ai-report" + (sourceId === report.id ? " selected" : "")}>
                   <input type="radio" name="sourceReport" checked={sourceId === report.id} onChange={() => { setSourceId(report.id); clearAiResults(); }} />
                   <span className={"tag" + (report.report_type === "lost" ? "" : " tag-neutral")}>{report.report_type === "lost" ? "Lost" : "Found"}</span>
-                  <span className="ai-report-text"><b>{report.title}</b><small>{report.location} · {new Date(report.created_at).toLocaleDateString()}</small></span>
+                  <span className="ai-report-text"><b>{report.title}</b><small>{report.location} · {report.item_date ? `${report.report_type === "lost" ? "Lost" : "Found"} ${new Date(report.item_date).toLocaleString()}` : `Posted ${new Date(report.created_at).toLocaleDateString()}`}</small></span>
                 </label>)}
               </div> : !loading && !loadError && <div className="ai-empty">
                 <b>{guest ? "No demo reports yet" : "No open reports to match"}</b>
