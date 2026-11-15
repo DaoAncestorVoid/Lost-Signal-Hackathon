@@ -706,3 +706,12 @@ p { line-height:1.55; }
  .return-journey-compact .return-steps{grid-template-columns:repeat(2,minmax(0,1fr))}
  .activity-karma-footer{margin-top:24px}
 }
+
+
+.activity-next-actions{margin:20px 0 26px;border:1px solid var(--line);border-radius:16px;background:var(--card);padding:18px}
+.activity-next-actions h2{margin:0 0 12px;font-size:18px}
+.activity-next-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-top:1px solid var(--line)}
+.activity-next-row b{font-size:14px}
+.activity-next-row p{font-size:12px;line-height:1.5;color:var(--muted);margin:4px 0 0}
+.activity-next-buttons{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:680px){.activity-next-row{align-items:stretch;flex-direction:column}.activity-next-row .button{align-self:flex-start}}
