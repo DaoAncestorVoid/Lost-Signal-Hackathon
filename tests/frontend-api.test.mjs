@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { LostSignalApi, browseReports, saveReport, toMatchingItem } from "../lib/frontend-api.ts";
+import { LostSignalApi, browseCategories, browseReports, saveReport, toMatchingItem } from "../lib/frontend-api.ts";
 import { findMatches } from "../lib/matching.ts";
 import { validateNewReport } from "../lib/reports/validation.ts";
 import { validateNewClaim } from "../lib/claims/validation.ts";
@@ -113,25 +113,68 @@ test("claim proof, pending/approved/rejected responses and owner decisions follo
   await assert.rejects(new LostSignalApi(async () => json({ error: "Claim already exists" }, 409)).submitClaim(id(1), "proof"), { status: 409 });
 });
 
-test("matching maps database attributes and batches at 25 without Gemini or invented endpoints", async () => {
+test("report matching uses saved report GET and preserves analysis and ranked report data", async () => {
+  const source = report(91, { report_type: "lost" });
+  const found = report(1, { image_path: "private/path" });
   let calls = 0;
-  const rows = Array.from({ length: 28 }, (_, n) => report(n + 1));
-  rows.push(report(90, { status: "matched" }), report(91, { report_type: "lost" }));
   const api = new LostSignalApi(async (url, init) => {
-    assert.equal(url, "/api/matches"); calls++;
+    calls++;
+    assert.equal(url, `/api/reports/${source.id}/matches`);
+    assert.equal(init.method, undefined); assert.equal(init.body, undefined);
+    assert.equal(init.credentials, "same-origin"); assert.equal(init.cache, "no-store");
+    return json({ source_report_id: source.id, count: 1,
+      matches: [{ report_id: found.id, score: 75, reasons: ["Same category", "Shared details"] }],
+      analysis: { state: "completed", attempted: 2, succeeded: 2, issues: [] } });
+  });
+  const result = await api.reportMatches(source.id, [source, found]);
+  assert.equal(calls, 1);
+  assert.deepEqual(result.matches, [{ report: found, score: 75, reasons: ["Same category", "Shared details"] }]);
+  assert.equal(result.analysis.state, "completed");
+});
+
+test("matching keeps Gemini-unavailable fallback distinct and rejects missing or malformed reports", async () => {
+  const source = report(91, { report_type: "lost" });
+  const fallback = { source_report_id: source.id, count: 1,
+    matches: [{ report_id: report().id, score: 45, reasons: ["Same category"] }],
+    analysis: { state: "unavailable", attempted: 0, succeeded: 0, issues: [] } };
+  const api = new LostSignalApi(async () => json(fallback));
+  const result = await api.reportMatches(source.id, [source, report()]);
+  assert.equal(result.analysis.state, "unavailable"); assert.equal(result.matches[0].score, 45);
+  await assert.rejects(api.reportMatches(source.id, [source]), { status: 502 });
+  await assert.rejects(new LostSignalApi(async () => json({ ...fallback, count: 2 })).reportMatches(source.id, [source, report()]), { status: 502 });
+  await assert.rejects(new LostSignalApi(async () => json({ error: "Too many matching requests" }, 429)).reportMatches(source.id, [source, report()]), { status: 429 });
+  await assert.rejects(new LostSignalApi(async () => json({ error: "Authentication required" }, 401)).reportMatches(source.id, [source, report()]), { status: 401 });
+});
+
+test("saved found reports map only open lost reports from the GET response", async () => {
+  const source = report(1);
+  const lost = report(2, { report_type: "lost" });
+  const response = { source_report_id: source.id, count: 1,
+    matches: [{ report_id: lost.id, score: 60, reasons: ["Shared details"] }],
+    analysis: { state: "not_needed", attempted: 0, succeeded: 0, issues: [] } };
+  const api = new LostSignalApi(async () => json(response));
+  assert.equal((await api.reportMatches(source.id, [source, lost])).matches[0].report.id, lost.id);
+  await assert.rejects(api.reportMatches(source.id, [source, { ...lost, status: "resolved" }]), { status: 502 });
+  await assert.rejects(api.reportMatches(source.id, [source, { ...lost, report_type: "found" }]), { status: 502 });
+});
+
+test("separate quick search retains weighted POST matching without Gemini", async () => {
+  const rows = Array.from({ length: 28 }, (_, n) => report(n + 1));
+  let calls = 0;
+  const api = new LostSignalApi(async (url, init) => {
+    calls++;
+    assert.equal(url, "/api/matches"); assert.equal(init.method, "POST");
     const { source, candidates } = JSON.parse(init.body);
-    assert.ok(candidates.length <= 25); assert.equal(source.category, "Bags");
-    assert.equal(source.reportType, "lost"); assert.equal(source.status, "open");
+    assert.equal(source.reportType, "lost"); assert.equal(source.category, "Bags");
+    assert.ok(candidates.length <= 25);
     return json({ success: true, matches: findMatches(source, candidates) });
   });
-  const result = await api.matches("Black canvas bag", rows, { category: "Bags" });
-  assert.equal(calls, 2); assert.equal(result.length, 10);
-  assert.equal(result[0].score, 45); assert.ok(result[0].reasons.length);
+  const matches = await api.matches("Black canvas bag", rows, { category: "Bags" });
+  assert.equal(calls, 2); assert.equal(matches.length, 10);
   const item = toMatchingItem(report(1, { ai_attributes: { color: "Unknown", brand: null, features: ["strap"] } }));
   assert.equal(item.color, undefined); assert.equal(item.brand, undefined);
   assert.deepEqual(item.features, ["strap"]);
 });
-
 test("matching handles empty results, API errors and unknown result IDs without fake matches", async () => {
   const empty = new LostSignalApi(async () => json({ success: true, matches: [] }));
   assert.deepEqual(await empty.matches("bag", [report()]), []);
@@ -140,4 +183,14 @@ test("matching handles empty results, API errors and unknown result IDs without 
   await assert.rejects(fail.matches("bag", [report()]), { status: 503 });
   const unexpected = new LostSignalApi(async () => json({ success: true, matches: [{ item: { id: "unknown" }, score: 90, reasons: [] }] }));
   await assert.rejects(unexpected.matches("bag", [report()]), { status: 502 });
+});
+
+test("category buttons deduplicate different casing, and filtering includes every case", () => {
+  const rows = [
+    report(10, { category: "other" }),
+    report(11, { category: "Other" }),
+  ];
+  assert.deepEqual(browseCategories(rows, ["Bags", "Other"]), ["All", "Bags", "Other"]);
+  assert.equal(browseReports(rows, "Other").length, 2);
+  assert.equal(browseReports(rows, "other").length, 2);
 });

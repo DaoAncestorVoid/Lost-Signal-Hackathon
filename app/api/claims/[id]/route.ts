@@ -1,3 +1,4 @@
+import { canWriteAsPermanentUser, permanentAccountRequired } from "@/lib/guest-permissions";
 import { claimErrorResponse } from "@/lib/claims/errors";
 import { isUuid, validateDecision } from "@/lib/claims/validation";
 import { createClient } from "@/lib/supabase/server";
@@ -35,6 +36,7 @@ export async function PATCH(request: Request, { params }: Context) {
   if (authError || !user) {
     return Response.json({ error: "Authentication required" }, { status: 401 });
   }
+  if (!canWriteAsPermanentUser(user)) return permanentAccountRequired();
   const { id } = await params;
   if (!isUuid(id)) {
     return Response.json({ error: "Invalid claim id" }, { status: 400 });

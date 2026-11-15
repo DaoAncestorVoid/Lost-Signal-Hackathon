@@ -60,6 +60,18 @@ export function AuthForm({ client }: { client: SupabaseClient | null }) {
     } catch (err) { setError(err instanceof Error ? err.message : "Authentication failed"); }
     finally { pending.current = false; setBusy(false); }
   }
+  async function guestLogin() {
+    if (!client || pending.current) return;
+    pending.current = true; setBusy(true); setError(""); setMessage("");
+    try {
+      const { error } = await client.auth.signInAnonymously();
+      if (error) throw error;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Guest login failed");
+    } finally {
+      pending.current = false; setBusy(false);
+    }
+  }
   return <form onSubmit={submit} aria-busy={busy}>
     <h2>{signup ? "Create an account" : "Sign in to Lost Signal"}</h2>
     <p className="note">Sign in to browse campus reports, post items, and request a claim.</p>
@@ -68,6 +80,9 @@ export function AuthForm({ client }: { client: SupabaseClient | null }) {
     {error && <p className="err" role="alert">{error}</p>}
     {message && <p role="status">{message}</p>}
     <button className="big" disabled={!client || busy}>{busy ? "Please wait…" : signup ? "Sign up" : "Sign in"}</button>
+    <button type="button" className="btn2" disabled={!client || busy} onClick={guestLogin}>
+      Continue as guest
+    </button>
     <button type="button" className="btn2" disabled={busy} onClick={() => { setSignup(!signup); setError(""); setMessage(""); }}>
       {signup ? "Already have an account? Sign in" : "New here? Create an account"}
     </button>
