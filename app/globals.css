@@ -353,3 +353,39 @@ p { line-height:1.55; }
 .karma-badge>span{font-size:24px}
 .karma-badge strong{font-size:12px}
 .karma-badge small{font-size:10px;color:var(--muted);line-height:1.4}
+
+/* Private claim-based messaging */
+.messages-page{max-width:1200px;margin:auto}
+.messages-layout{display:grid;grid-template-columns:minmax(240px,320px) minmax(0,1fr);gap:18px;min-height:500px}
+.messages-list,.messages-chat{border:1px solid var(--line);border-radius:18px;background:var(--card);overflow:hidden}
+.messages-list{padding:18px;display:flex;flex-direction:column;gap:8px}
+.messages-list h2{font-size:17px;margin:0 0 12px}
+.messages-list h2 span{color:var(--muted);font-weight:500}
+.messages-conversation{display:flex;flex-direction:column;gap:6px;text-align:left;padding:14px 12px;border:1px solid var(--line);border-radius:12px;background:transparent;width:100%}
+.messages-conversation:hover,.messages-conversation.is-selected{border-color:var(--red);background:var(--tint)}
+.messages-conversation b{font-size:14px}
+.messages-conversation span{font-size:12px;color:var(--muted)}
+.messages-chat{display:flex;flex-direction:column;min-width:0;padding:20px}
+.messages-chat-header{display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:14px}
+.messages-chat-header h2{font-size:21px;margin:4px 0 0}
+.messages-thread{display:flex;flex-direction:column;align-items:flex-start;gap:13px;min-height:270px;max-height:480px;overflow-y:auto;padding:20px 4px;flex:1}
+.messages-bubble{max-width:min(80%,520px);border:1px solid var(--line);border-radius:16px;padding:12px 14px;background:var(--bg);overflow-wrap:anywhere}
+.messages-bubble.mine{background:var(--tint);border-color:var(--red);align-self:flex-end}
+.messages-author{font-size:11px;font-weight:800;color:var(--redtext)}
+.messages-bubble p{font-size:14px;white-space:pre-wrap;margin:5px 0}
+.messages-bubble time{font-size:10px;color:var(--muted)}
+.messages-compose{display:flex;gap:8px;margin:8px 0}
+.messages-compose input{flex:1;min-width:0;padding:10px 14px;border-radius:12px;border:1px solid var(--line);color:var(--ink);background:var(--bg)}
+.messages-empty{margin:auto;color:var(--muted)}
+@media(max-width:700px){
+  .messages-layout{grid-template-columns:1fr;gap:12px}
+  .messages-list{max-height:180px;overflow-y:auto}
+  .messages-chat{min-height:380px;padding:13px}
+  .messages-thread{max-height:370px}
+  .messages-chat-header h2{font-size:17px}
+  .messages-chat-header .button{font-size:12px;padding:10px}
+}
+@media(max-width:600px){
+  .nav-inner{grid-template-columns:repeat(5,1fr)}
+  .app-nav button{font-size:10px}
+}
