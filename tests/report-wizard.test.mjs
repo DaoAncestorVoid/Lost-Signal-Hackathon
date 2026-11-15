@@ -28,6 +28,8 @@ test("required details are checked at their step before final schema validation"
   const draft = blankDraft("lost");
   assert.match(stepError(1, draft), /item name/);
   draft.name = "UCard";
+  assert.match(stepError(1, draft), /category/);
+  draft.category = "Cards";
   assert.match(stepError(1, draft), /description/);
   draft.description = "Red lanyard";
   assert.equal(stepError(1, draft), "");
