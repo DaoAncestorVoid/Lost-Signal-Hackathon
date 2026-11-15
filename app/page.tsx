@@ -118,7 +118,7 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
   const reportRequest = useRef(0);
   const claimRequest = useRef(0);
   const [aiText, setAiText] = useState("");
-  const [searchAttributes, setSearchAttributes] = useState({ category: "", color: "", brand: "" });
+  const [searchAttributes, setSearchAttributes] = useState({ category: "", color: "", brand: "", itemDate: "" });
   const [aiResults, setAiResults] = useState<RankedReport[] | null>(null);
   const [aiError, setAiError] = useState("");
   const [sourceId, setSourceId] = useState("");
@@ -341,20 +341,20 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     finally { pending.current = false; if (active.current) setBusy(false); }
   }
   function startMatching(report: Report) {
-    setSourceId(report.id); setAiError(""); setAiResults(null); setAnalysis(null); setView("ai");
+    setAiMode("report"); setSourceId(report.id); setAiError(""); setAiResults(null); setAnalysis(null); setView("ai");
   }
   async function runAi(event: React.FormEvent) {
     event.preventDefault();
     if (matchMode === "report" && !sourceId) return;
-    if (pending.current || (sourceId ?!matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
+    if (pending.current || (matchMode === "report" ? !matchableItems.some(r => r.id === sourceId) : !aiText.trim()) || loading || loadError) return;
     pending.current = true; setBusy(true); setAiError(""); setAiResults(null); setAnalysis(null);
     try {
       await sessionRequired();
-      if (sourceId) {
+      if (matchMode === "report") {
         const result = await api.reportMatches(sourceId, reports);
         if (active.current) { setAiResults(result.matches); setAnalysis(result.analysis); }
       } else {
-        const result = await api.matches(aiText.trim(), reports, searchAttributes);
+        const result = await api.matches(aiText.trim(), reports, { ...searchAttributes, itemDate: searchAttributes.itemDate ? new Date(searchAttributes.itemDate).toISOString() : undefined });
         if (active.current) setAiResults(result);
       }
     } catch (err) { if (active.current) setAiError(errorMessage(err)); }
@@ -402,16 +402,16 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
     {view === "ai" && <section className="matches-page ai-page">
       <div className="ai-hero">
         <span className="ai-badge" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z" /><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" /></svg></span>
-        <div><span className="eyebrow">AI Search</span><h1>Find a possible match</h1>
-          <p>{guest ? "See how an existing campus report compares with others. Guest analysis is limited." : "Describe an item, or compare one of your saved reports with open reports from the other side of lost and found."}</p></div>
+        <div><span className="eyebrow">LostSignal · Gemini-assisted</span><h1>Find your match, faster.</h1>
+          <p>{guest ? "Search campus items and try report matching. Gemini analysis is limited for guests." : "Search by description or compare your saved report with Gemini-assisted item analysis, location and the time lost or found."}</p></div>
       </div>
 
       <div className="ai-layout">
         <div className="ai-main">
           <form className="match-search-form ai-card" onSubmit={runAi}><fieldset disabled={busy}>
             <div className="ai-mode" role="radiogroup" aria-label="Search mode">
-              <button type="button" role="radio" aria-checked={matchMode === "quick"} className={matchMode === "quick" ? "on" : ""} onClick={() => chooseMatchMode("quick")}><b>Quick search</b><small>Describe an item</small></button>
-              <button type="button" role="radio" aria-checked={matchMode === "report"} className={matchMode === "report" ? "on" : ""} onClick={() => chooseMatchMode("report")}><b>{guest ? "Demo report" : "Match my report"}</b><small>{guest ? "Limited Gemini analysis" : "Gemini-assisted"}</small></button>
+              <button type="button" role="radio" aria-checked={matchMode === "quick"} className={matchMode === "quick" ? "on" : ""} onClick={() => chooseMatchMode("quick")}><b>Quick search</b><small>Find by keywords · no Gemini</small></button>
+              <button type="button" role="radio" aria-checked={matchMode === "report"} className={matchMode === "report" ? "on" : ""} onClick={() => chooseMatchMode("report")}><b>{guest ? "Try Gemini demo" : "Gemini-assisted matches"}</b><small>{guest ? "Report comparison" : "Compare photos, details and dates"}</small></button>
             </div>
 
             {matchMode === "quick" ? <>
@@ -428,7 +428,8 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
                 <label className="field">Color <span className="sub">(optional)</span><input maxLength={100} value={searchAttributes.color} placeholder="Black" onChange={e => { setSearchAttributes({ ...searchAttributes, color: e.target.value }); setAiResults(null); }} /></label>
                 <label className="field">Brand <span className="sub">(optional)</span><input maxLength={100} value={searchAttributes.brand} placeholder="JanSport" onChange={e => { setSearchAttributes({ ...searchAttributes, brand: e.target.value }); setAiResults(null); }} /></label>
               </div>
-              <p className="note ai-note">Quick search ranks open found reports by weighted similarity. {guest ? "Pick a demo report for Gemini analysis." : "Save a report to get Gemini analysis."}</p>
+              <label className="field ai-time-field">When did you lose it? <span className="sub">(optional)</span><input type="datetime-local" value={searchAttributes.itemDate} onChange={e => { setSearchAttributes({ ...searchAttributes, itemDate: e.target.value }); setAiResults(null); }} /></label>
+              <p className="note ai-note">Quick search compares item names, descriptions, details, place and time. For Gemini-assisted photo analysis, choose the other mode.</p>
             </> : <>
               {matchableItems.length ? <div className="ai-report-list" role="radiogroup" aria-label={guest ? "Demo report" : "Your report"}>
                 {matchableItems.map(report => <label key={report.id} className={"ai-report" + (sourceId === report.id ? " selected" : "")}>
@@ -443,8 +444,9 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
               </div>}
             </>}
 
+            {matchMode === "report" && <div className="gemini-mode-note"><span className="gemini-mode-mark" aria-hidden="true">✦</span><div><b>Gemini-powered detail extraction</b><span>When needed and available, Gemini examines item photos or descriptions. Matching still works if AI is unavailable.</span></div></div>}
             <button className="button button-primary submit-button ai-submit" disabled={busy || loading || !!loadError || (matchMode === "report" && !sourceId)}>
-              {busy ? <><span className="spinner" />Comparing reports…</> : matchMode === "report" ? "Find report matches" : "Search found items"}
+              {busy ? <><span className="spinner" />Comparing reports…</> : matchMode === "report" ? "✦ Find Gemini-assisted matches" : "Search found items"}
             </button>
           </fieldset></form>
 
@@ -468,11 +470,11 @@ function Workspace({ user, client, homeSignal, notificationClaim, notificationRe
           <div className="ai-card ai-steps"><h2>How it works</h2>
             <ol>
               <li><b>Describe or pick</b><span>Type what you lost, or choose one of your saved reports.</span></li>
-              <li><b>We compare details</b><span>Category, color, brand, place and description are weighed together.</span></li>
+              <li><b>We compare details</b><span>Item name, color, brand, description, place and time are considered; Gemini fills in missing attributes when needed.</span></li>
               <li><b>Review and claim</b><span>Open a match and send private proof to the finder.</span></li>
             </ol>
           </div>
-          <p className="ai-disclaimer">Similarity scores describe shared details, not proof of ownership.</p>
+          <p className="ai-disclaimer">A match percentage represents shared evidence, not the probability that this is your item. Missing details can lower the ranking; dates are optional.</p>
         </aside>
       </div>
     </section>}
