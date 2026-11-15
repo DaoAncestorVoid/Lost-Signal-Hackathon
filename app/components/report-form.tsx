@@ -10,8 +10,9 @@ import { LocationPicker } from "./campus-map/location-picker";
 const api = new LostSignalApi();
 const categories = ["Bags", "Keys", "IDs", "Tech", "Other"];
 
-export function ReportForm({ initialType, client, userId, guest = false, onBack, onSaved, onReportCreated }: {
+export function ReportForm({ initialType, client, userId, guest = false, onBack, onSaved, onReportCreated, onTypeChange }: {
   initialType: WizardDraft["type"];
+  onTypeChange?: (type: WizardDraft["type"]) => void;
   client: SupabaseClient;
   userId: string;
   guest?: boolean;
@@ -40,7 +41,7 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
     queueMicrotask(() => {
       if (!active) return;
       try {
-        // Remove legacy drafts keyed only by report type; they were not account-scoped.
+        // Discard account-agnostic legacy drafts so users cannot inherit them.
         sessionStorage.removeItem(`lostsignal-report-draft-v1-${initialType}`);
         const raw = sessionStorage.getItem(storageKey);
         if (raw) {
@@ -126,6 +127,11 @@ export function ReportForm({ initialType, client, userId, guest = false, onBack,
     <button type="button" className="back" onClick={onBack}>← Back to browse</button>
     <div className="page-heading"><span className="eyebrow">Create a {draft.type} report</span><h1 id="report-title">{draft.type === "found" ? "Help it find its owner." : "Let’s find your item."}</h1>
       <p>Just three short steps. Your details stay here while you move between them.</p></div>
+    {onTypeChange && <fieldset className="type-choice report-type-choice" disabled={busy || !!savedReport}>
+      <legend>Which report do you want to make?</legend>
+      <label className={draft.type === "lost" ? "selected" : ""}><input type="radio" name="reportType" checked={draft.type === "lost"} onChange={() => onTypeChange("lost")} /><span><b><span className="type-word">Lost</span> report</b><small>I lost something</small></span></label>
+      <label className={draft.type === "found" ? "selected" : ""}><input type="radio" name="reportType" checked={draft.type === "found"} onChange={() => onTypeChange("found")} /><span><b><span className="type-word">Found</span> report</b><small>I found something</small></span></label>
+    </fieldset>}
     <div className="wizard-progress" aria-label={`Step ${step} of 3`}><span>Step {step} of 3</span><div className="wizard-progress-track"><span style={{ width: `${step / 3 * 100}%` }} /></div><span>{step === 1 ? title : step === 2 ? "Where and when?" : "Review and post"}</span></div>
     {restored && <p className="notice" role="status">Your report draft was restored. {photoMissing && "Please reselect your photo before posting."}</p>}
     <form className="wizard-card" onSubmit={submit} aria-busy={busy} noValidate>
