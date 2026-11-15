@@ -28,6 +28,7 @@ export default function Home() {
   const [logoutError, setLogoutError] = useState("");
   const [homeSignal, setHomeSignal] = useState(0);
   const [notificationReport, setNotificationReport] = useState<Report | null>(null);
+  const [notificationMessageClaim, setNotificationMessageClaim] = useState<string | null>(null);
   useEffect(() => {
     // Resolve theme after hydration; CSS supplies the system preference immediately.
     const sync = () => {
@@ -60,7 +61,7 @@ export default function Home() {
       <div className="brand"><button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse"><BrandWordmark /></button></div>
       <div className="header-tools">
         {auth.user && <span className="account-label" title={auth.user.email ?? "Guest session"}>{auth.user.is_anonymous ? "Guest session" : auth.user.email}</span>}
-        {auth.user && !auth.user.is_anonymous && <NotificationBell onOpen={setNotificationReport} />}
+        {auth.user && !auth.user.is_anonymous && <NotificationBell onOpen={setNotificationReport} onOpenMessage={setNotificationMessageClaim} />}
         <button type="button" className="dark-toggle" onClick={toggleTheme} aria-pressed={dark}>Dark mode: {dark ? "on" : "off"}</button>
         {auth.user && <button className="button button-quiet signout" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : auth.user.is_anonymous ? "Sign in / Sign up" : "Sign out"}</button>}
       </div>
@@ -70,13 +71,17 @@ export default function Home() {
       {logoutError && <p className="err" role="alert">{logoutError}</p>}
       {auth.loading ? <div className="state-card" role="status"><span className="spinner" />Checking your session…</div> : auth.user && auth.client ? <>
         {auth.user.is_anonymous && <p className="guest-notice" role="status">Exploring as a guest. You can browse and try limited matching. Sign in to post an item or submit a claim.</p>}
-        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} notificationReport={notificationReport} onNotificationConsumed={() => setNotificationReport(null)} />
+        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} notificationReport={notificationReport} onNotificationConsumed={() => setNotificationReport(null)} notificationMessageClaim={notificationMessageClaim} onNotificationMessageConsumed={() => setNotificationMessageClaim(null)} />
       </> : <div className="auth-layout"><section className="auth-story"><span className="eyebrow">Made for the UMass community</span><h1>Good things find their way back.</h1><p>LostSignal connects people who lost something with the people who found it. Share a report, explore campus finds, and take the next step with confidence.</p><div className="auth-steps"><span>01 &nbsp; Report it</span><span>02 &nbsp; Find a match</span><span>03 &nbsp; Claim it</span></div></section><AuthForm client={auth.client} /></div>}
     </main>
   </>;
 }
 
-function Workspace({ user, client, homeSignal, notificationReport, onNotificationConsumed }: { user: User; client: SupabaseClient; homeSignal: number; notificationReport: Report | null; onNotificationConsumed: () => void }) {
+function Workspace({ user, client, homeSignal, notificationReport, onNotificationConsumed, notificationMessageClaim, onNotificationMessageConsumed }: {
+  user: User; client: SupabaseClient; homeSignal: number;
+  notificationReport: Report | null; onNotificationConsumed: () => void;
+  notificationMessageClaim: string | null; onNotificationMessageConsumed: () => void;
+}) {
   const [view, setView] = useState<View>("browse");
   const [seenHomeSignal, setSeenHomeSignal] = useState(homeSignal);
   if (homeSignal !== seenHomeSignal) {
@@ -162,6 +167,22 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
     }, 0);
     return () => clearTimeout(timer);
   }, [notificationReport, onNotificationConsumed]);
+
+  useEffect(() => {
+    if (!notificationMessageClaim) return;
+    const timer = setTimeout(() => {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("report")) {
+        url.searchParams.delete("report");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      }
+      setSelectedMessageClaim(notificationMessageClaim);
+      setView("messages");
+      void loadClaims();
+      onNotificationMessageConsumed();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [notificationMessageClaim, onNotificationMessageConsumed]);
 
   // A shareable URL uses ?report=<uuid>. Resolve only after report loading.
   useEffect(() => {
@@ -456,7 +477,7 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
       </section></div>
     </section>}
 
-    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
+    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
   <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("browse"); }}>
