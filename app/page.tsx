@@ -6,14 +6,17 @@ import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
 import { BrowseView } from "./components/browse-view";
 import { ReportForm } from "./components/report-form";
+import { ReportEditor } from "./components/report-editor";
+import { NotificationBell } from "./components/notification-bell";
 import { MatchResultCard } from "./components/match-result-card";
 import { KarmaPanel } from "./components/karma-panel";
 import { MessagesView } from "./components/messages-view";
 import { BrandWordmark } from "./components/brand-wordmark";
 import { LostSignalApi, browseCategories, browseReports, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
 import { validateNewClaim } from "@/lib/claims/validation";
+import { deleteConfirmation } from "@/lib/reports/management";
 
-type View = "browse" | "ai" | "post" | "mine" | "detail" | "messages";
+type View = "browse" | "ai" | "post" | "mine" | "detail" | "edit" | "messages";
 const api = new LostSignalApi();
 const postCategories = ["Bags", "Keys", "IDs", "Tech", "Other"];
 const errorMessage = (err: unknown) => err instanceof Error ? err.message : "The request failed. Please try again.";
@@ -24,6 +27,7 @@ export default function Home() {
   const [logoutBusy, setLogoutBusy] = useState(false);
   const [logoutError, setLogoutError] = useState("");
   const [homeSignal, setHomeSignal] = useState(0);
+  const [notificationReport, setNotificationReport] = useState<Report | null>(null);
   useEffect(() => {
     // Resolve theme after hydration; CSS supplies the system preference immediately.
     const sync = () => {
@@ -56,6 +60,7 @@ export default function Home() {
       <div className="brand"><button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse"><BrandWordmark /></button></div>
       <div className="header-tools">
         {auth.user && <span className="account-label" title={auth.user.email ?? "Guest session"}>{auth.user.is_anonymous ? "Guest session" : auth.user.email}</span>}
+        {auth.user && !auth.user.is_anonymous && <NotificationBell onOpen={setNotificationReport} />}
         <button type="button" className="dark-toggle" onClick={toggleTheme} aria-pressed={dark}>Dark mode: {dark ? "on" : "off"}</button>
         {auth.user && <button className="button button-quiet signout" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : auth.user.is_anonymous ? "Sign in / Sign up" : "Sign out"}</button>}
       </div>
@@ -65,13 +70,13 @@ export default function Home() {
       {logoutError && <p className="err" role="alert">{logoutError}</p>}
       {auth.loading ? <div className="state-card" role="status"><span className="spinner" />Checking your session…</div> : auth.user && auth.client ? <>
         {auth.user.is_anonymous && <p className="guest-notice" role="status">Exploring as a guest. You can browse and try limited matching. Sign in to post an item or submit a claim.</p>}
-        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} />
+        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} notificationReport={notificationReport} onNotificationConsumed={() => setNotificationReport(null)} />
       </> : <div className="auth-layout"><section className="auth-story"><span className="eyebrow">Made for the UMass community</span><h1>Good things find their way back.</h1><p>LostSignal connects people who lost something with the people who found it. Share a report, explore campus finds, and take the next step with confidence.</p><div className="auth-steps"><span>01 &nbsp; Report it</span><span>02 &nbsp; Find a match</span><span>03 &nbsp; Claim it</span></div></section><AuthForm client={auth.client} /></div>}
     </main>
   </>;
 }
 
-function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseClient; homeSignal: number }) {
+function Workspace({ user, client, homeSignal, notificationReport, onNotificationConsumed }: { user: User; client: SupabaseClient; homeSignal: number; notificationReport: Report | null; onNotificationConsumed: () => void }) {
   const [view, setView] = useState<View>("browse");
   const [seenHomeSignal, setSeenHomeSignal] = useState(homeSignal);
   if (homeSignal !== seenHomeSignal) {
@@ -145,6 +150,18 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
     }, 0);
     return () => { active.current = false; controller.abort(); clearTimeout(timer); };
   }, []);
+  useEffect(() => {
+    if (!notificationReport) return;
+    const timer = setTimeout(() => {
+      const url = new URL(window.location.href);
+      url.searchParams.set("report", notificationReport.id);
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      setShareNotice("");
+      setReports(previous => previous.some(report => report.id === notificationReport.id) ? previous : [notificationReport, ...previous]);
+      setSelectedId(notificationReport.id); setView("detail"); onNotificationConsumed();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [notificationReport, onNotificationConsumed]);
 
   // A shareable URL uses ?report=<uuid>. Resolve only after report loading.
   useEffect(() => {
@@ -189,7 +206,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
   const myItems = reports.filter(r => r.user_id === user.id);
   const matchableItems = guest ? reports.filter(r => r.status === "open").slice(0, 20) : myItems.filter(r => r.status === "open");
   const myClaim = selected && claims.find(c => c.report_id === selected.id && c.claimant_id === user.id);
-  const tab = view === "detail" ? "browse" : view;
+  const tab = view === "detail" ? "browse" : view === "edit" ? "mine" : view;
   const matchMode = sourceId ? "report" : aiMode;
 
   function clearAiResults() { setAiResults(null); setAnalysis(null); setAiError(""); }
@@ -215,6 +232,19 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       setSourceId(report.id); setAiResults(null); setAnalysis(null); setAiError(""); setView("ai");
     } else setView("mine");
     void loadReports();
+  }
+  async function deleteOwnReport(report: Report) {
+    if (guest || busy || pending.current || report.user_id !== user.id) return;
+    if (!window.confirm(deleteConfirmation(report.title))) return;
+    pending.current = true; setBusy(true); setActionError("");
+    try {
+      await sessionRequired();
+      const warning = await api.deleteReport(report.id);
+      setReports(previous => previous.filter(item => item.id !== report.id));
+      setNotice(warning ?? "Report permanently deleted.");
+      await Promise.all([loadReports(), loadClaims()]);
+    } catch (err) { setActionError(errorMessage(err)); }
+    finally { pending.current = false; setBusy(false); }
   }
 
   function openItem(report: Report) {
@@ -409,12 +439,15 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
 
     {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onTypeChange={type => startPost(type)} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
 
+    {view === "edit" && selected && selected.user_id === user.id && !guest && <ReportEditor key={selected.id} report={selected} onBack={() => setView("mine")} onChanged={() => void loadReports()} onDone={message => { setNotice(message); setView("mine"); void loadReports(); }} />}
+
     {view === "mine" && <section className="activity-page">
+      {actionError && <p className="alert alert-error" role="alert">{actionError}</p>}
       <KarmaPanel enabled={!guest} refreshKey={handoffRefresh + claims.filter(c => !!c.handoff_confirmed_at).length} />
       <div className="page-heading activity-heading"><div><span className="eyebrow">Your corner</span><h1>My activity</h1><p>Track your reports, matching, and ownership requests.</p></div><button className="button button-secondary" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh activity</button></div>
       <div className="activity-layout"><section><div className="results-heading"><h2>My reports</h2><span>{myItems.length}</span></div>
         {!loading && !loadError && !myItems.length && <div className="state-card"><b>No reports yet</b><p>{guest ? "Sign in to post an item and track it here." : "Start with a lost or found report. Your updates will appear here."}</p>{!guest && <button className="button button-primary" onClick={() => startPost("lost")}>Report an item</button>}</div>}
-        {myItems.map(item => <article className="activity-card" key={item.id}><ReportPhoto report={item} className="activity-photo" /><div><div className="tags"><span className="tag">{item.report_type}</span><span className="tag tag-neutral">{item.status}</span></div><h3>{item.title}</h3><p>{item.location}</p><div className="activity-actions"><button className="text-action" onClick={() => openItem(item)}>View report →</button>{item.status === "open" && <button className="text-action" onClick={() => startMatching(item)}>Find matches →</button>}</div>{item.report_type === "found" && claims.some(c => c.report_id === item.id && c.status === "pending") && <span className="activity-notification">Pending claim to review</span>}</div></article>)}
+        {myItems.map(item => { const activeClaim = claims.some(c => c.report_id === item.id && (c.status === "pending" || c.status === "approved")); const anyClaim = claims.some(c => c.report_id === item.id); return <article className="activity-card" key={item.id}><ReportPhoto report={item} className="activity-photo" /><div><div className="tags"><span className="tag">{item.report_type}</span><span className="tag tag-neutral">{item.status}</span></div><h3>{item.title}</h3><p>{item.location}</p><div className="activity-actions"><button className="text-action" onClick={() => openItem(item)}>View report →</button>{item.status === "open" && <button className="text-action" onClick={() => startMatching(item)}>Find matches →</button>}{!guest && <><button className="text-action" disabled={item.status !== "open" || activeClaim || claimsLoading || !!claimsError} onClick={() => { setSelectedId(item.id); setView("edit"); }}>Edit</button><button className="text-action danger-action" disabled={anyClaim || claimsLoading || !!claimsError || busy} onClick={() => void deleteOwnReport(item)}>Delete</button></>}</div>{activeClaim && <span className="field-hint">This report has an active claim; editing is paused.</span>}{anyClaim && <span className="field-hint">Reports with claims cannot be deleted.</span>}{item.report_type === "found" && claims.some(c => c.report_id === item.id && c.status === "pending") && <span className="activity-notification">Pending claim to review</span>}</div></article>; })}
       </section><section><div className="results-heading"><h2>My claims</h2><span>{claims.filter(c => c.claimant_id === user.id).length}</span></div>
         {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
         {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}

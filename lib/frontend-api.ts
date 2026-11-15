@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { NewReport } from "./reports/validation";
+import type { ReportEdit } from "./reports/validation";
 import type { Item } from "../types/item";
 
 const Attributes = z.object({
@@ -11,6 +12,7 @@ export const ReportSchema = z.object({
   report_type: z.enum(["lost", "found"]), status: z.enum(["open", "matched", "resolved"]),
   title: z.string(), description: z.string(), category: z.string(), location: z.string(),
   image_path: z.string().nullable(), created_at: z.string(),
+  item_date: z.string().nullable().optional(),
   // Database JSONB is not constrained to the current AI schema. Unknown shapes
   // must not prevent browsing; only validated attributes feed the matcher.
   ai_attributes: z.unknown().transform(value => {
@@ -25,6 +27,12 @@ const ClaimSchema = z.object({
   handoff_confirmed_at: z.string().nullable(),
 });
 export type Claim = z.infer<typeof ClaimSchema>;
+export const NotificationSchema = z.object({
+  id: z.string().uuid(), recipient_id: z.string().uuid(), lost_report_id: z.string().uuid(),
+  found_report_id: z.string().uuid(), score: z.number().int().min(50).max(100),
+  read_at: z.string().nullable(), created_at: z.string(), found_report: ReportSchema,
+});
+export type MatchNotification = z.infer<typeof NotificationSchema>;
 export type RankedReport = { report: Report; score: number; reasons: string[] };
 export const ReportMatchAnalysisSchema = z.object({
   state: z.enum(["not_needed", "unavailable", "completed", "partial"]),
@@ -65,19 +73,42 @@ export class LostSignalApi {
   async reports(signal?: AbortSignal): Promise<Report[]> {
     return (await this.request("/api/reports", z.object({ reports: z.array(ReportSchema) }), { signal })).reports;
   }
+  async report(id: string): Promise<Report> {
+    return (await this.request(`/api/reports/${encodeURIComponent(id)}`, z.object({ report: ReportSchema }))).report;
+  }
   async claims(signal?: AbortSignal): Promise<Claim[]> {
     return (await this.request("/api/claims", z.object({ claims: z.array(ClaimSchema) }), { signal })).claims;
+  }
+  async notifications(): Promise<MatchNotification[]> {
+    return (await this.request("/api/notifications", z.object({ notifications: z.array(NotificationSchema) }))).notifications;
+  }
+  async refreshNotifications(): Promise<void> {
+    await this.request("/api/notifications", z.object({ created: z.number().int().nonnegative() }), { method: "POST" }, 60_000);
+  }
+  async markNotificationRead(id: string): Promise<void> {
+    await this.request(`/api/notifications/${encodeURIComponent(id)}`, z.object({ id: z.string().uuid() }), { method: "PATCH" });
   }
   async createReport(payload: NewReport): Promise<Report> {
     return (await this.request("/api/reports", z.object({ report: ReportSchema }), {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
     })).report;
   }
-  async uploadPhoto(id: string, file: File): Promise<void> {
+  async updateReport(id: string, payload: ReportEdit): Promise<Report> {
+    return (await this.request(`/api/reports/${encodeURIComponent(id)}`, z.object({ report: ReportSchema }), {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    })).report;
+  }
+  async deleteReport(id: string): Promise<string | undefined> {
+    return (await this.request(`/api/reports/${encodeURIComponent(id)}`, z.object({ deleted_id: z.string().uuid(), warning: z.string().optional() }), { method: "DELETE" })).warning;
+  }
+  async removePhoto(id: string): Promise<string | undefined> {
+    return (await this.request(`/api/reports/${encodeURIComponent(id)}/image`, z.object({ image_path: z.null(), warning: z.string().optional() }), { method: "DELETE" })).warning;
+  }
+  async uploadPhoto(id: string, file: File): Promise<string | undefined> {
     const form = new FormData(); form.set("image", file);
-    await this.request(`/api/reports/${encodeURIComponent(id)}/image`, z.object({
-      image_path: z.string(), signed_url: z.string().url(), expires_in: z.number(),
-    }), { method: "POST", body: form });
+    return (await this.request(`/api/reports/${encodeURIComponent(id)}/image`, z.object({
+      image_path: z.string(), signed_url: z.string().url(), expires_in: z.number(), warning: z.string().optional(),
+    }), { method: "POST", body: form })).warning;
   }
   async photoUrl(id: string, signal?: AbortSignal): Promise<string> {
     return (await this.request(`/api/reports/${encodeURIComponent(id)}/image`, z.object({

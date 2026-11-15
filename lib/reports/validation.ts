@@ -7,6 +7,22 @@ export type NewReport = {
   item_date?: string | null;
 };
 
+export type ReportEdit = Partial<Pick<NewReport, "title" | "description" | "category" | "location" | "item_date">>;
+const editableFields = new Set(["title", "description", "category", "location", "item_date"]);
+
+export function validateReportEdit(value: unknown): { data: ReportEdit; error?: never } | { data?: never; error: string } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { error: "Request body must be a JSON object" };
+  const body = value as Record<string, unknown>;
+  if (!Object.keys(body).length) return { error: "Provide at least one field to edit" };
+  const unsupported = Object.keys(body).find(key => !editableFields.has(key));
+  if (unsupported) return { error: `Unsupported field: ${unsupported}` };
+  const merged = validateNewReport({ report_type: "lost", title: "placeholder", description: "placeholder", category: "Other", location: "placeholder", ...body });
+  if (!merged.data) return { error: merged.error };
+  const data: ReportEdit = {};
+  for (const key of editableFields) if (key in body) Object.assign(data, { [key]: merged.data[key as keyof ReportEdit] });
+  return { data };
+}
+
 type ValidationResult =
   | { data: NewReport; error?: never }
   | { data?: never; error: string };
