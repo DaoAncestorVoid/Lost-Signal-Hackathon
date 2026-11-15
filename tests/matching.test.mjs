@@ -78,3 +78,38 @@ test("ranking, threshold, limit and normalization remain deterministic", () => {
   assert.throws(() => findMatches(lost, [], { minScore: 101 }), RangeError);
   assert.throws(() => findMatches(lost, [], { limit: -1 }), RangeError);
 });
+
+
+test("exact item names rank well even when Gemini attributes are absent", () => {
+  const source = { id: "lost-scooter", reportType: "lost", status: "open",
+    title: "Lost SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Bikes" };
+  const candidate = { id: "found-scooter", reportType: "found", status: "open",
+    title: "Found SpongeBob scooter", description: "SpongeBob scooter",
+    category: "Bikes" };
+  const result = scoreMatch(source, candidate);
+  assert.equal(result.score, 75); // 35 category + 10 description + 30 title
+  assert.ok(result.reasons.includes("Matching item name"));
+});
+
+test("time evidence considers item events instead of report creation", () => {
+  const source = { ...lost, title: "Nike backpack", itemDate: "2026-11-14T15:00:00Z" };
+  const candidate = { ...found, title: "Nike backpack", itemDate: "2026-11-14T20:00:00Z" };
+  const baseline = scoreMatch(source, { ...candidate, itemDate: null });
+  const close = scoreMatch(source, candidate);
+  assert.equal(close.score, Math.min(100, baseline.score + 12));
+  assert.ok(close.reasons.includes("Lost and found times are close"));
+
+  const contradictory = scoreMatch(source, { ...candidate, itemDate: "2026-11-10T12:00:00Z" });
+  assert.ok(contradictory.score < baseline.score);
+  assert.ok(contradictory.reasons.includes("Found time predates reported loss"));
+  assert.equal(scoreMatch({ ...source, itemDate: null }, candidate).score, baseline.score);
+});
+
+test("a close time is not evidence of identical items on its own", () => {
+  const source = { id: "a", reportType: "lost", status: "open", description: "",
+    itemDate: "2026-11-14T10:00:00Z" };
+  const candidate = { id: "b", reportType: "found", status: "open", description: "",
+    itemDate: "2026-11-14T11:00:00Z" };
+  assert.equal(scoreMatch(source, candidate).score, 0);
+});
