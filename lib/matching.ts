@@ -37,6 +37,12 @@ export function scoreMatch(source: Item, candidate: Item): ItemMatch {
     return { item: candidate, score: 0, reasons };
   }
 
+  const leftTitle = tokens([source.title ?? ""]);
+  const rightTitle = tokens([candidate.title ?? ""]);
+  const distinctiveExactTitle = leftTitle.size >= 2 &&
+    leftTitle.size === rightTitle.size &&
+    [...leftTitle].every(token => rightTitle.has(token));
+
   let earned = 0;
   for (const [field, weight] of [
     ["category", 35], ["color", 20], ["brand", 20],
@@ -48,8 +54,10 @@ export function scoreMatch(source: Item, candidate: Item): ItemMatch {
       earned += weight;
       reasons.push(`Same ${field}: ${candidate[field]}`);
     } else if (field === "category") {
-      // Explicitly different categories should never be suggested as matches.
-      return { item: candidate, score: 0, reasons: [] };
+      // Categories can be user-selected inconsistently. Only override this
+      // mismatch when the exact multi-word item name is distinctive.
+      if (!distinctiveExactTitle) return { item: candidate, score: 0, reasons: [] };
+      reasons.push("Different report categories — verify details");
     }
   }
 
@@ -72,8 +80,6 @@ export function scoreMatch(source: Item, candidate: Item): ItemMatch {
   // Titles are especially useful for manually entered reports where AI
   // extraction is missing. Exact matching titles are meaningful even when
   // the two descriptions have different levels of detail.
-  const leftTitle = tokens([source.title ?? ""]);
-  const rightTitle = tokens([candidate.title ?? ""]);
   if (leftTitle.size && rightTitle.size) {
     const similarity = overlap(leftTitle, rightTitle);
     if (similarity > 0) {
