@@ -69,24 +69,24 @@ export function KarmaPanel({ enabled, refreshKey = 0 }: { enabled: boolean; refr
   if (!enabled) return null;
   return <section className="karma-panel" aria-labelledby="karma-heading">
     <h2 id="karma-heading">🏆 Campus Karma</h2>
-    <p className="note">Earn 50 points each time you approve a valid ownership claim on a found item. Approval does not necessarily mean the item has been physically returned.</p>
+    <p className="note">Earn 50 points when the claimant confirms they received an item you found. Approval alone does not earn points.</p>
     {loading && <p role="status">Loading achievements…</p>}
     {error && <p className="err" role="alert">{error}</p>}
     {karma && !loading && <>
       <div className="karma-stats">
         <div className="karma-stat"><strong>{karma.points}</strong><span>Karma points</span></div>
-        <div className="karma-stat"><strong>{karma.approvedClaims}</strong><span>Approved claims</span></div>
+        <div className="karma-stat"><strong>{karma.approvedClaims}</strong><span>Confirmed returns</span></div>
       </div>
       <div className="karma-badges" aria-label="Karma achievements">
         {karma.badges.map(badge => <div className={"karma-badge" + (badge.unlocked ? " unlocked" : "")} key={badge.id}>
           <span aria-hidden="true">{badge.unlocked ? badge.emoji : "🔒"}</span>
           <strong>{badge.label}</strong>
-          <small>{badge.threshold} approved {badge.threshold === 1 ? "claim" : "claims"}</small>
+          <small>{badge.threshold} confirmed {badge.threshold === 1 ? "return" : "returns"}</small>
         </div>)}
       </div>
       <p className="note" aria-live="polite">
         {karma.nextBadge
-          ? `${karma.nextBadge.remaining} more ${karma.nextBadge.remaining === 1 ? "approval" : "approvals"} until ${karma.nextBadge.label}!`
+          ? `${karma.nextBadge.remaining} more ${karma.nextBadge.remaining === 1 ? "confirmed return" : "confirmed returns"} until ${karma.nextBadge.label}!`
           : "All Campus Karma badges unlocked!"}
       </p>
     </>}
