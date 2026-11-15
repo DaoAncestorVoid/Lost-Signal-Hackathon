@@ -82,7 +82,7 @@ function issueFor(error: unknown): MatchAnalysis["issues"][number] {
   return "provider_unavailable";
 }
 
-/** Uses Gemini only when existing report evidence does not already rank strongly. */
+/** Optionally enrich saved reports with Gemini, even for promising initial matches; baseline similarity always remains available if AI fails. */
 export async function matchReports(source: ReportRow, candidates: ReportRow[], deps: Dependencies) {
   const items = new Map<string, Item>([
     [source.id, reportToItem(source)],
@@ -94,7 +94,7 @@ export async function matchReports(source: ReportRow, candidates: ReportRow[], d
   });
   const baseline = rank();
   const analysis: MatchAnalysis = { state: "not_needed", attempted: 0, succeeded: 0, issues: [] };
-  if (!candidates.length || (baseline[0]?.score ?? 0) >= 60) {
+  if (!candidates.length) {
     return { matches: baseline, analysis };
   }
 
