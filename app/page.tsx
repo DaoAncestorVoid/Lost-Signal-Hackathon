@@ -284,8 +284,7 @@ function Workspace({ user, client, homeSignal }: { user: User; client: SupabaseC
       </div>}
     </section>}
 
-    {view === "post" && (guest ? <section className="gate-page"><button className="back" onClick={() => setView("browse")}>← Back to browse</button><div className="state-card"><span className="eyebrow">Account required</span><h1>Ready to report an item?</h1><p>Sign in or create an account to publish a report, upload a photo, and manage claims. Use “Sign in / Sign up” in the header to continue.</p></div></section> :
-      <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} onBack={() => setView("browse")} onSaved={reportSaved} onReportCreated={() => void loadReports()} />)}
+    {view === "post" && <ReportForm key={formKey} initialType={reportType} client={client} userId={user.id} guest={guest} onBack={() => setView("browse")} onSaved={reportSaved} onReportCreated={() => void loadReports()} />}
 
     {view === "mine" && <section className="activity-page">
       <KarmaPanel enabled={!guest} refreshKey={claims.filter(c => c.status === "approved").length} />
