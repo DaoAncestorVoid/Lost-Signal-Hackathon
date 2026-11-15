@@ -10,6 +10,7 @@ import { ReportEditor } from "./components/report-editor";
 import { NotificationBell } from "./components/notification-bell";
 import { MatchResultCard } from "./components/match-result-card";
 import { KarmaPanel } from "./components/karma-panel";
+import { InboxProvider, MessagesBadge, useInbox } from "./components/inbox-state";
 import { MessagesView } from "./components/messages-view";
 import { BrandWordmark } from "./components/brand-wordmark";
 import { LostSignalApi, browseCategories, browseReports, type Report, type Claim, type RankedReport, type ReportMatchAnalysis } from "@/lib/frontend-api";
@@ -28,6 +29,8 @@ export default function Home() {
   const [logoutError, setLogoutError] = useState("");
   const [homeSignal, setHomeSignal] = useState(0);
   const [notificationReport, setNotificationReport] = useState<Report | null>(null);
+  const [notificationClaim, setNotificationClaim] = useState<string | null>(null);
+  const [notificationMessageClaim, setNotificationMessageClaim] = useState<string | null>(null);
   useEffect(() => {
     // Resolve theme after hydration; CSS supplies the system preference immediately.
     const sync = () => {
@@ -55,12 +58,12 @@ export default function Home() {
     } catch (err) { setLogoutError(errorMessage(err)); }
     finally { setLogoutBusy(false); }
   }
-  return <>
+  return <InboxProvider key={auth.user?.id ?? "signed-out"} client={auth.client} enabled={!!auth.user && auth.user.is_anonymous === false}>
     <header className="site-header"><div className="header-inner">
       <div className="brand"><button type="button" className="brand-btn" onClick={() => setHomeSignal(n => n + 1)} aria-label="LostSignal, go to Browse"><BrandWordmark /></button></div>
       <div className="header-tools">
         {auth.user && <span className="account-label" title={auth.user.email ?? "Guest session"}>{auth.user.is_anonymous ? "Guest session" : auth.user.email}</span>}
-        {auth.user && !auth.user.is_anonymous && <NotificationBell onOpen={setNotificationReport} />}
+        {auth.user && !auth.user.is_anonymous && <NotificationBell onOpen={(report, claimId) => { setNotificationReport(report); setNotificationClaim(claimId ?? null); }} onOpenMessage={setNotificationMessageClaim} />}
         <button type="button" className="dark-toggle" onClick={toggleTheme} aria-pressed={dark}>Dark mode: {dark ? "on" : "off"}</button>
         {auth.user && <button className="button button-quiet signout" disabled={logoutBusy} onClick={logout}>{logoutBusy ? "Signing out…" : auth.user.is_anonymous ? "Sign in / Sign up" : "Sign out"}</button>}
       </div>
@@ -70,13 +73,20 @@ export default function Home() {
       {logoutError && <p className="err" role="alert">{logoutError}</p>}
       {auth.loading ? <div className="state-card" role="status"><span className="spinner" />Checking your session…</div> : auth.user && auth.client ? <>
         {auth.user.is_anonymous && <p className="guest-notice" role="status">Exploring as a guest. You can browse and try limited matching. Sign in to post an item or submit a claim.</p>}
-        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} notificationReport={notificationReport} onNotificationConsumed={() => setNotificationReport(null)} />
+        <Workspace key={auth.user.id} user={auth.user} client={auth.client} homeSignal={homeSignal} notificationClaim={notificationClaim} notificationReport={notificationReport} onNotificationConsumed={() => setNotificationReport(null)} notificationMessageClaim={notificationMessageClaim} onNotificationMessageConsumed={() => setNotificationMessageClaim(null)} />
       </> : <div className="auth-layout"><section className="auth-story"><span className="eyebrow">Made for the UMass community</span><h1>Good things find their way back.</h1><p>LostSignal connects people who lost something with the people who found it. Share a report, explore campus finds, and take the next step with confidence.</p><div className="auth-steps"><span>01 &nbsp; Report it</span><span>02 &nbsp; Find a match</span><span>03 &nbsp; Claim it</span></div></section><AuthForm client={auth.client} /></div>}
     </main>
-  </>;
+  </InboxProvider>;
 }
 
-function Workspace({ user, client, homeSignal, notificationReport, onNotificationConsumed }: { user: User; client: SupabaseClient; homeSignal: number; notificationReport: Report | null; onNotificationConsumed: () => void }) {
+function Workspace({ user, client, homeSignal, notificationClaim, notificationReport, onNotificationConsumed, notificationMessageClaim, onNotificationMessageConsumed }: {
+  user: User; client: SupabaseClient; homeSignal: number;
+  notificationClaim: string | null; notificationReport: Report | null; onNotificationConsumed: () => void;
+  notificationMessageClaim: string | null; onNotificationMessageConsumed: () => void;
+}) {
+  const { summaries: inboxSummaries, activities: inboxActivities } = useInbox();
+  const inboxClaimRevision = inboxSummaries.map(row => row.claim_id).sort().join(",") + ":" + inboxActivities.map(row => row.id).sort().join(",");
+  const [focusedClaim, setFocusedClaim] = useState<string | null>(null);
   const [view, setView] = useState<View>("browse");
   const [seenHomeSignal, setSeenHomeSignal] = useState(homeSignal);
   if (homeSignal !== seenHomeSignal) {
@@ -151,6 +161,11 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
     return () => { active.current = false; controller.abort(); clearTimeout(timer); };
   }, []);
   useEffect(() => {
+    if (!inboxClaimRevision || inboxClaimRevision === ":") return;
+    const timer = setTimeout(() => { void loadClaims(); void loadReports(); }, 0);
+    return () => clearTimeout(timer);
+  }, [inboxClaimRevision]);
+  useEffect(() => {
     if (!notificationReport) return;
     const timer = setTimeout(() => {
       const url = new URL(window.location.href);
@@ -158,10 +173,34 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
       setShareNotice("");
       setReports(previous => previous.some(report => report.id === notificationReport.id) ? previous : [notificationReport, ...previous]);
+      setFocusedClaim(notificationClaim);
+      void loadClaims();
       setSelectedId(notificationReport.id); setView("detail"); onNotificationConsumed();
     }, 0);
     return () => clearTimeout(timer);
-  }, [notificationReport, onNotificationConsumed]);
+  }, [notificationReport, notificationClaim, onNotificationConsumed]);
+
+  useEffect(() => {
+    if (view !== "detail" || !focusedClaim || claimsLoading) return;
+    const timer = setTimeout(() => document.getElementById(`claim-${focusedClaim}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
+    return () => clearTimeout(timer);
+  }, [view, focusedClaim, claimsLoading, claims]);
+
+  useEffect(() => {
+    if (!notificationMessageClaim) return;
+    const timer = setTimeout(() => {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("report")) {
+        url.searchParams.delete("report");
+        window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      }
+      setSelectedMessageClaim(notificationMessageClaim);
+      setView("messages");
+      void loadClaims();
+      onNotificationMessageConsumed();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [notificationMessageClaim, onNotificationMessageConsumed]);
 
   // A shareable URL uses ?report=<uuid>. Resolve only after report loading.
   useEffect(() => {
@@ -342,7 +381,7 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
           <div className="info detail-facts"><h2>Report details</h2><div><span>Location</span><b>{selected.location}</b></div><div><span>Reported</span><b>{new Date(selected.created_at).toLocaleDateString()}</b></div></div>
           {claimsLoading && <div className="state-card" role="status"><span className="spinner" />Loading claims…</div>}
           {claimsError && <div className="state-card state-error" role="alert">{claimsError} <button className="small" onClick={() => void loadClaims()}>Retry claims</button></div>}
-          {myClaim ? <div className="info claim-panel" role="status"><span className="eyebrow">Your claim</span><h2>Status: {myClaim.status}</h2><p>{myClaim.status === "pending" ? "The finder will review the details you provided." : myClaim.status === "approved" ? (myClaim.handoff_confirmed_at ? "You confirmed receiving this item. Thank you!" : "Claim approved. Arrange a handoff with the finder, then confirm once you receive the item.") : "This claim was not approved."}</p>{!guest && myClaim.status === "approved" && !myClaim.handoff_confirmed_at && <button className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(myClaim)}>I received this item</button>}{!guest && myClaim.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(myClaim.id)}>Message finder</button>}</div> :
+          {myClaim ? <div id={`claim-${myClaim.id}`} className={"info claim-panel" + (focusedClaim === myClaim.id ? " focused-claim" : "")} role="status"><span className="eyebrow">Your claim</span><h2>Status: {myClaim.status}</h2><p>{myClaim.status === "pending" ? "The finder will review the details you provided." : myClaim.status === "approved" ? (myClaim.handoff_confirmed_at ? "You confirmed receiving this item. Thank you!" : "Claim approved. Arrange a handoff with the finder, then confirm once you receive the item.") : "This claim was not approved."}</p>{!guest && myClaim.status === "approved" && !myClaim.handoff_confirmed_at && <button className="button button-primary" disabled={busy} onClick={() => void confirmHandoff(myClaim)}>I received this item</button>}{!guest && myClaim.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(myClaim.id)}>Message finder</button>}</div> :
             selected.user_id !== user.id && selected.report_type === "found" && selected.status === "open" && (guest ? <div className="info claim-panel"><h2>Is this yours?</h2><p>Sign in or create an account to send private proof to the finder and request a claim.</p></div> : <form className="info claim-panel" onSubmit={claim}>
               <span className="eyebrow">Take the next step</span><h2>Is this yours?</h2><p>Share a detail only the owner would know. Your proof is visible only to you and the finder.</p>
               <label className="field">Proof of ownership<textarea className="box" required maxLength={2000} value={proof} onChange={e => setProof(e.target.value)} placeholder="Describe a unique mark, contents, or another private detail" /></label>
@@ -350,7 +389,7 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
             </form>)}
           {selected.user_id === user.id && selected.report_type === "found" && <div className="info claim-panel"><span className="eyebrow">Owner requests</span><h2>Claims on this report</h2>
             {!claimsLoading && !claimsError && !claims.some(c => c.report_id === selected.id) && <p className="empty">No one has claimed this item yet. New requests will appear here.</p>}
-            {claims.filter(c => c.report_id === selected.id).map(c => <div className="claim-request" key={c.id}><span className="tag tag-neutral">{c.status}</span><p>{c.proof}</p>{c.status === "approved" && <p className="note">{c.handoff_confirmed_at ? `Return confirmed by claimant on ${new Date(c.handoff_confirmed_at).toLocaleDateString()}` : "Awaiting claimant confirmation of item handoff."}</p>}{!guest && c.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(c.id)}>Message claimant</button>}
+            {claims.filter(c => c.report_id === selected.id).map(c => <div id={`claim-${c.id}`} className={"claim-request" + (focusedClaim === c.id ? " focused-claim" : "")} key={c.id}><span className="tag tag-neutral">{c.status}</span><p>{c.proof}</p>{c.status === "approved" && <p className="note">{c.handoff_confirmed_at ? `Return confirmed by claimant on ${new Date(c.handoff_confirmed_at).toLocaleDateString()}` : "Awaiting claimant confirmation of item handoff."}</p>}{!guest && c.status !== "rejected" && <button className="button button-secondary" onClick={() => openMessages(c.id)}>Message claimant</button>}
               {!guest && c.status === "pending" && selected.status === "open" && <div className="claim-actions"><button className="button button-primary" disabled={busy} onClick={() => void decide(c, "approved")}>Approve</button><button className="button button-secondary" disabled={busy} onClick={() => void decide(c, "rejected")}>Reject</button></div>}
             </div>)}</div>}
           {actionError && <p className="err" role="alert">{actionError}</p>}
@@ -456,7 +495,7 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
       </section></div>
     </section>}
 
-    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
+    {view === "messages" && (guest ? <div className="state-card">Sign in to a permanent account to use messaging.</div> : <MessagesView key={selectedMessageClaim ?? "inbox"} client={client} userId={user.id} claims={claims} reports={reports} initialClaimId={selectedMessageClaim} onOpenReport={openItem} />)}
 
     <nav className="app-nav" aria-label="Main navigation"><div className="nav-inner">
   <button className={tab === "browse" ? "on" : ""} aria-current={tab === "browse" ? "page" : undefined} onClick={() => { clearSharedReportUrl(); setView("browse"); }}>
@@ -481,7 +520,7 @@ function Workspace({ user, client, homeSignal, notificationReport, onNotificatio
   </button>
   <button className={tab === "messages" ? "on" : ""} aria-current={tab === "messages" ? "page" : undefined} onClick={() => openMessages()}>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.5 9.6 9.6 0 0 1-4-.9L3 21l1.7-4a8.5 8.5 0 1 1 16.3-5.5z" /></svg>
-    <span>Messages</span>
+    <span>Messages {!guest && <MessagesBadge />}</span>
   </button>
 </div></nav>
   </>;

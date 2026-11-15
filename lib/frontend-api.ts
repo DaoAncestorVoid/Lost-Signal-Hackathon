@@ -33,6 +33,16 @@ export const NotificationSchema = z.object({
   read_at: z.string().nullable(), created_at: z.string(), found_report: ReportSchema,
 });
 export type MatchNotification = z.infer<typeof NotificationSchema>;
+export const ActivityNotificationSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(["claim", "message", "approved", "rejected", "handoff"]),
+  report_id: z.string().uuid(),
+  claim_id: z.string().uuid(),
+  report_title: z.string(),
+  read_at: z.string().nullable(),
+  created_at: z.string(),
+});
+export type ActivityNotification = z.infer<typeof ActivityNotificationSchema>;
 export type RankedReport = { report: Report; score: number; reasons: string[] };
 export const ReportMatchAnalysisSchema = z.object({
   state: z.enum(["not_needed", "unavailable", "completed", "partial"]),
@@ -81,6 +91,13 @@ export class LostSignalApi {
   }
   async notifications(): Promise<MatchNotification[]> {
     return (await this.request("/api/notifications", z.object({ notifications: z.array(NotificationSchema) }))).notifications;
+  }
+  async activityNotifications(): Promise<ActivityNotification[]> {
+    return (await this.request("/api/activity-notifications", z.object({ notifications: z.array(ActivityNotificationSchema) }))).notifications;
+  }
+  async markActivityNotificationRead(id: string): Promise<void> {
+    await this.request(`/api/activity-notifications/${encodeURIComponent(id)}`,
+      z.object({ id: z.string().uuid() }), { method: "PATCH" });
   }
   async refreshNotifications(): Promise<void> {
     await this.request("/api/notifications", z.object({ created: z.number().int().nonnegative() }), { method: "POST" }, 60_000);
