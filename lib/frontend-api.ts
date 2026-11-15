@@ -167,10 +167,11 @@ export class LostSignalApi {
     });
     return { matches, analysis: response.analysis };
   }
-  async matches(description: string, reports: readonly Report[], attributes: { category?: string; color?: string; brand?: string } = {}): Promise<RankedReport[]> {
+  async matches(description: string, reports: readonly Report[], attributes: { category?: string; color?: string; brand?: string; itemDate?: string } = {}): Promise<RankedReport[]> {
     // Free-text quick search remains available; saved reports use reportMatches above.
     const candidates = reports.filter(r => r.report_type === "found" && r.status === "open");
-    const source: Item = { id: "search", reportType: "lost", status: "open", description,
+    const source: Item = { id: "search", reportType: "lost", status: "open", description, title: description,
+      itemDate: attributes.itemDate,
       category: known(attributes.category), color: known(attributes.color), brand: known(attributes.brand) };
     const results: RankedReport[] = [];
     for (let start = 0; start < candidates.length; start += 25) {
@@ -200,6 +201,8 @@ export function toMatchingItem(report: Report): Item {
     id: report.id, reportType: report.report_type,
     status: report.status === "open" ? "open" : "resolved",
     description: report.description.slice(0, 2000),
+    title: report.title.slice(0, 200),
+    itemDate: report.item_date,
     category: known(report.category)?.slice(0, 100),
     location: report.location.slice(0, 200),
     color: known(attributes?.color)?.slice(0, 100), brand: known(attributes?.brand)?.slice(0, 100),
