@@ -35,7 +35,7 @@ begin
     where id = p_claim_id for update;
 
   -- Hide unauthorized claims as not found.
-  if not found or v_claim.claimant_id <> v_user_id
+  if v_claim.id is null or v_report.id is null or v_claim.claimant_id <> v_user_id
      or v_report.report_type <> 'found'
      or v_report.user_id = v_user_id then
     raise exception using errcode = 'P0002', message = 'Claim not found';
