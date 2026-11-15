@@ -6,6 +6,7 @@ import type { User, SupabaseClient } from "@supabase/supabase-js";
 import { AuthForm, useAuth } from "./components/auth";
 import { ReportPhoto } from "./components/report-photo";
 import { ReportGrid } from "./components/report-card";
+import { KarmaPanel } from "./components/karma-panel";
 import { FoundReportsMap } from "./components/campus-map/found-reports-map";
 import { LocationPicker } from "./components/campus-map/location-picker";
 import mapStyles from "./components/campus-map/campus-map.module.css";
@@ -382,6 +383,7 @@ function Workspace({ user, client }: { user: User; client: SupabaseClient }) {
     </form>)}
 
     {view === "mine" && <section>
+      <KarmaPanel enabled={!guest} refreshKey={claims.length} />
       <div className="row"><h2 style={{ fontSize: 20 }}>My items and claims</h2><button className="small" disabled={loading || claimsLoading} onClick={() => { void loadReports(); void loadClaims(); }}>Refresh</button></div>
       {!loading && !loadError && !myItems.length && <p className="empty">{guest ? "Guest sessions cannot post or claim items. Sign in to a permanent account to get started." : "You have not posted anything yet. Tap + to post a lost or found item."}</p>}
       {myItems.map(item => <div key={item.id}><button className="match" onClick={() => openItem(item)}><ReportPhoto report={item} className="th" /><div><b>{item.title}</b><div className="sub">{item.location}</div><span className="tag">{item.report_type} · {item.status}</span></div></button>{item.status === "open" && <button className="small" onClick={() => startMatching(item)}>Find AI matches</button>}</div>)}
