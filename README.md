@@ -2,7 +2,7 @@
 
 **Lost something? Find your signal.**
 
-Lost Signal is an AI-assisted lost-and-found web app built for the **UMass Amherst** community during HackUMass. Instead of relying on Snapchat stories or buried group-chat messages, students can report missing belongings, browse found items, compare potential matches, and securely request ownership.
+Lost Signal is an AI-assisted lost-and-found web app built for the **UMass Amherst** community during HackUMass. Instead of relying on Snapchat stories or buried social media posts, students can report missing belongings, browse found items, compare potential matches, and securely request ownership.
 
 **Live app:** https://lostsignal.boston
 
