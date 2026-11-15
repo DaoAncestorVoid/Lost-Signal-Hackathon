@@ -16,7 +16,6 @@ type Props = {
   onOpenReport: (report: Report) => void;
 };
 
-type Conversation = { claim: Claim; report: Report };
 
 export function MessagesView({ client, userId, claims, reports, initialClaimId, onOpenReport }: Props) {
   const conversations = useMemo(() => claims.flatMap(claim => {
