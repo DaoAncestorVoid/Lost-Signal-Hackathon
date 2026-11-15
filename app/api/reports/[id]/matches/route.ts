@@ -16,7 +16,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const limiter = new AnalysisLimiter();
-const fields = "id,user_id,report_type,status,title,description,category,location,image_path,ai_description,ai_attributes";
+const fields = "id,user_id,report_type,status,title,description,category,location,item_date,image_path,ai_description,ai_attributes";
 const noStore = { "Cache-Control": "no-store" };
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
