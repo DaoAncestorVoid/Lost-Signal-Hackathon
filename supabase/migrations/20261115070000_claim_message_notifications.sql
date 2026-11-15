@@ -15,6 +15,7 @@ create table public.activity_notifications (
   ),
   constraint activity_notification_once_per_claim unique (claim_id, kind, message_id)
 );
+create unique index activity_notifications_claim_once_idx on public.activity_notifications(claim_id) where kind = 'claim';
 create index activity_notifications_recipient_idx
   on public.activity_notifications(recipient_id, created_at desc);
 
